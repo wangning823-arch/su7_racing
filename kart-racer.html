@@ -1,0 +1,1787 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>3D卡丁车赛车</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:100%;height:100%;overflow:hidden;background:#000;font-family:'Segoe UI',Arial,sans-serif}
+canvas{display:block}
+#menu{position:absolute;top:0;left:0;width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;background:linear-gradient(135deg,#1a1a2e,#16213e,#0f3460);z-index:100}
+#menu h1{font-size:3em;color:#e94560;text-shadow:0 0 20px rgba(233,69,96,0.5);margin-bottom:10px}
+#menu h2{font-size:1.2em;color:#aaa;margin-bottom:40px}
+#menu button{font-size:1.5em;padding:15px 60px;border:2px solid #e94560;background:transparent;color:#e94560;cursor:pointer;border-radius:8px;transition:all 0.3s;margin:10px;touch-action:manipulation;-webkit-tap-highlight-color:transparent}
+#menu button:hover,#menu button:active{background:#e94560;color:#fff}
+#hud{position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:10;display:none}
+#hud-position{position:absolute;top:20px;left:20px;font-size:2em;color:#fff;text-shadow:2px 2px 4px #000}
+#hud-lap{position:absolute;top:60px;left:20px;font-size:1.2em;color:#fff;text-shadow:2px 2px 4px #000}
+#hud-time{position:absolute;top:20px;right:20px;font-size:1.5em;color:#fff;text-shadow:2px 2px 4px #000}
+#hud-speed{position:absolute;bottom:40px;left:50%;transform:translateX(-50%);font-size:2.5em;color:#0f0;text-shadow:0 0 10px rgba(0,255,0,0.5);font-weight:bold}
+#hud-countdown{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font-size:8em;color:#e94560;text-shadow:0 0 30px rgba(233,69,96,0.8);display:none}
+#minimap{position:absolute;bottom:20px;right:20px;border:2px solid rgba(255,255,255,0.3);border-radius:8px}
+#results{position:absolute;top:0;left:0;width:100%;height:100%;display:none;flex-direction:column;align-items:center;justify-content:center;background:rgba(0,0,0,0.85);z-index:100}
+#results h1{font-size:3em;color:#e94560;margin-bottom:20px}
+#results table{border-collapse:collapse;margin:20px}
+#results td,#results th{padding:10px 30px;color:#fff;font-size:1.2em;text-align:center;border-bottom:1px solid #333}
+#results th{color:#e94560}
+#results button{font-size:1.3em;padding:12px 50px;border:2px solid #e94560;background:transparent;color:#e94560;cursor:pointer;border-radius:8px;margin-top:30px;transition:all 0.3s;touch-action:manipulation;-webkit-tap-highlight-color:transparent}
+#results button:hover,#results button:active{background:#e94560;color:#fff}
+#touch-controls{position:absolute;bottom:0;left:0;width:100%;height:50%;pointer-events:none;z-index:15;display:none}
+#joystick-zone{position:absolute;bottom:20px;left:20px;width:180px;height:180px;pointer-events:auto}
+.touch-btn{pointer-events:auto;touch-action:none;display:flex;align-items:center;justify-content:center;font-weight:bold;user-select:none;-webkit-user-select:none}
+#throttle-btn{position:absolute;bottom:100px;right:30px;width:90px;height:90px;border-radius:50%;background:rgba(46,204,113,0.6);border:3px solid #2ecc71;color:#fff;font-size:0.9em}
+#throttle-btn:active,#throttle-btn.active{background:rgba(46,204,113,0.9)}
+#brake-btn{position:absolute;bottom:20px;right:140px;width:80px;height:80px;border-radius:50%;background:rgba(52,152,219,0.6);border:3px solid #3498db;color:#fff;font-size:0.8em}
+#brake-btn:active,#brake-btn.active{background:rgba(52,152,219,0.9)}
+#drift-btn{position:absolute;bottom:20px;right:30px;width:80px;height:80px;border-radius:50%;background:rgba(233,69,96,0.6);border:3px solid #e94560;color:#fff;font-size:0.8em}
+#drift-btn:active,#drift-btn.active{background:rgba(233,69,96,0.9)}
+</style>
+</head>
+<body>
+
+<div id="menu">
+<h1>3D卡丁车赛车</h1>
+<h2>Kart Racing 3D</h2>
+<button id="startBtn">START</button>
+</div>
+
+<div id="hud">
+<div id="hud-position">#1 / 6</div>
+<div id="hud-lap">圈 1 / 3</div>
+<div id="hud-time">00:00.00</div>
+<div id="hud-speed">0 km/h</div>
+<div id="hud-countdown">3</div>
+<canvas id="minimap" width="160" height="160"></canvas>
+</div>
+
+<div id="results">
+<h1>比赛结束!</h1>
+<table id="results-table"></table>
+<button id="restartBtn">再来一次</button>
+</div>
+
+<div id="touch-controls">
+<div id="joystick-zone"></div>
+<div id="throttle-btn" class="touch-btn">油门</div>
+<div id="brake-btn" class="touch-btn">刹车</div>
+<div id="drift-btn" class="touch-btn">漂移</div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/nipplejs@0.10.2/dist/nipplejs.min.js"></script>
+
+<script type="importmap">
+{
+"imports": {
+"three": "https://cdn.jsdelivr.net/npm/three@0.172.0/build/three.module.js",
+"three/addons/": "https://cdn.jsdelivr.net/npm/three@0.172.0/examples/jsm/",
+"cannon-es": "https://esm.sh/cannon-es@0.20.0"
+}
+}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import * as CANNON from 'cannon-es';
+
+// ========================================
+// 1. CONFIG
+// ========================================
+const CONFIG = {
+maxSpeed: 35,
+engineForce: 1800,
+brakeForce: 80,
+steerAngle: 0.8,
+kartMass: 150,
+chassisW: 1.1, chassisH: 0.2, chassisL: 2.2,
+wheelRadius: 0.35,
+trackWidth: 14,
+trackSegments: 1000,
+totalLaps: 3,
+numAI: 5,
+aiSpeeds: [1.0, 0.95, 0.90, 0.85, 0.80],
+aiLookaheads: [18, 16, 14, 12, 10],
+cameraDistance: 8,
+cameraHeight: 3.5,
+colors: [0xe94560, 0x3498db, 0x2ecc71, 0xf39c12, 0x9b59b6, 0x1abc9c],
+kartNames: ['玩家', '闪电', '疾风', '烈焰', '幻影', '雷霆']
+};
+
+// ========================================
+// 2. InputManager
+// ========================================
+class InputManager {
+constructor() {
+this.keys = {};
+this.touch = { throttle: 0, brake: 0, steer: 0, drift: false };
+this.joystick = null;
+this.isMobile = 'ontouchstart' in window;
+window.addEventListener('keydown', e => { this.keys[e.code] = true; });
+window.addEventListener('keyup', e => { this.keys[e.code] = false; });
+if (this.isMobile) this.initTouch();
+}
+
+initTouch() {
+document.getElementById('touch-controls').style.display = 'block';
+const zone = document.getElementById('joystick-zone');
+const throttleBtn = document.getElementById('throttle-btn');
+const brakeBtn = document.getElementById('brake-btn');
+const driftBtn = document.getElementById('drift-btn');
+
+if (typeof nipplejs !== 'undefined') {
+this.joystick = nipplejs.create({
+zone: zone,
+mode: 'static',
+position: { left: '50%', top: '50%' },
+color: 'white',
+size: 120
+});
+this.joystick.on('move', (evt, data) => {
+const angle = data.angle ? data.angle.radian : 0;
+const force = Math.min(data.force || 0, 2) / 2;
+const dx = Math.cos(angle) * force;
+this.touch.steer = Math.max(-1, Math.min(1, dx));
+});
+this.joystick.on('end', () => {
+this.touch.steer = 0;
+});
+}
+
+const addBtnEvents = (el, prop) => {
+el.addEventListener('touchstart', (e) => { e.preventDefault(); this.touch[prop] = 1; el.classList.add('active'); });
+el.addEventListener('touchend', (e) => { e.preventDefault(); this.touch[prop] = 0; el.classList.remove('active'); });
+el.addEventListener('touchcancel', (e) => { e.preventDefault(); this.touch[prop] = 0; el.classList.remove('active'); });
+};
+addBtnEvents(throttleBtn, 'throttle');
+addBtnEvents(brakeBtn, 'brake');
+driftBtn.addEventListener('touchstart', (e) => { e.preventDefault(); this.touch.drift = true; driftBtn.classList.add('active'); });
+driftBtn.addEventListener('touchend', (e) => { e.preventDefault(); this.touch.drift = false; driftBtn.classList.remove('active'); });
+driftBtn.addEventListener('touchcancel', (e) => { e.preventDefault(); this.touch.drift = false; driftBtn.classList.remove('active'); });
+}
+
+getInput() {
+const k = this.keys;
+const t = this.touch;
+return {
+throttle: (k['KeyW'] || k['ArrowUp'] || t.throttle > 0.1) ? Math.max(t.throttle, (k['KeyW'] || k['ArrowUp']) ? 1 : 0) : 0,
+brake: (k['KeyS'] || k['ArrowDown'] || t.brake > 0.1) ? Math.max(t.brake, (k['KeyS'] || k['ArrowDown']) ? 1 : 0) : 0,
+steer: (() => {
+let s = 0;
+if (k['KeyA'] || k['ArrowLeft']) s -= 1;
+if (k['KeyD'] || k['ArrowRight']) s += 1;
+if (Math.abs(t.steer) > 0.1) s += t.steer;
+return Math.max(-1, Math.min(1, s));
+})(),
+drift: k['Space'] || t.drift
+};
+}
+}
+
+// ========================================
+// 3. TrackBuilder
+// ========================================
+class TrackBuilder {
+constructor(scene, physicsWorld) {
+this.scene = scene;
+this.world = physicsWorld;
+this.spline = null;
+this.waypoints = [];
+this.trackLength = 0;
+this.checkpoints = [];
+}
+
+build() {
+const y = 0;
+const pts = [
+new THREE.Vector3(125, y, 0),
+new THREE.Vector3(133, y, 21),
+new THREE.Vector3(121, y, 39),
+new THREE.Vector3(95, y, 49),
+new THREE.Vector3(71, y, 51),
+new THREE.Vector3(55, y, 55),
+new THREE.Vector3(45, y, 62),
+new THREE.Vector3(33, y, 64),
+new THREE.Vector3(18, y, 55),
+new THREE.Vector3(6, y, 36),
+new THREE.Vector3(0, y, 30),
+new THREE.Vector3(-5, y, 30),
+new THREE.Vector3(-12, y, 36),
+new THREE.Vector3(-26, y, 52),
+new THREE.Vector3(-45, y, 62),
+new THREE.Vector3(-65, y, 65),
+new THREE.Vector3(-87, y, 63),
+new THREE.Vector3(-108, y, 55),
+new THREE.Vector3(-121, y, 39),
+new THREE.Vector3(-119, y, 19),
+new THREE.Vector3(-105, y, 0),
+new THREE.Vector3(-91, y, -14),
+new THREE.Vector3(-85, y, -28),
+new THREE.Vector3(-84, y, -43),
+new THREE.Vector3(-76, y, -55),
+new THREE.Vector3(-58, y, -58),
+new THREE.Vector3(-36, y, -50),
+new THREE.Vector3(-21, y, -42),
+new THREE.Vector3(-14, y, -44),
+new THREE.Vector3(-9, y, -56),
+new THREE.Vector3(0, y, -68),
+new THREE.Vector3(11, y, -70),
+new THREE.Vector3(20, y, -63),
+new THREE.Vector3(28, y, -54),
+new THREE.Vector3(36, y, -50),
+new THREE.Vector3(48, y, -48),
+new THREE.Vector3(60, y, -44),
+new THREE.Vector3(71, y, -36),
+new THREE.Vector3(85, y, -28),
+new THREE.Vector3(105, y, -17),
+];
+
+this.spline = new THREE.CatmullRomCurve3(pts, true, 'catmullrom', 0.5);
+this.trackLength = this.spline.getLength();
+
+this.buildRoad();
+this.buildCurbs();
+this.buildBarriers();
+this.buildGround();
+this.buildTrees();
+this.buildStartLine();
+this.buildScenery();
+this.generateWaypoints();
+this.generateCheckpoints();
+}
+
+buildRoad() {
+const segs = CONFIG.trackSegments;
+const frames = this.spline.computeFrenetFrames(segs, true);
+const hw = CONFIG.trackWidth / 2;
+const verts = [], uvs = [], indices = [];
+
+for (let i = 0; i <= segs; i++) {
+const p = this.spline.getPointAt(i / segs);
+const b = frames.binormals[i];
+const lp = p.clone().add(b.clone().multiplyScalar(-hw));
+const rp = p.clone().add(b.clone().multiplyScalar(hw));
+verts.push(lp.x, lp.y + 0.06, lp.z, rp.x, rp.y + 0.06, rp.z);
+uvs.push(0, i / segs * 80, 1, i / segs * 80);
+}
+for (let i = 0; i < segs; i++) {
+const a = i * 2, b = a + 1;
+const c = ((i + 1) % (segs + 1)) * 2, d = c + 1;
+indices.push(a, c, b, b, c, d);
+}
+
+const geo = new THREE.BufferGeometry();
+geo.setAttribute('position', new THREE.Float32BufferAttribute(verts, 3));
+geo.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+geo.setIndex(indices);
+geo.computeVertexNormals();
+
+const canvas = document.createElement('canvas');
+canvas.width = 256; canvas.height = 256;
+const ctx = canvas.getContext('2d');
+ctx.fillStyle = '#3a3a3a';
+ctx.fillRect(0, 0, 256, 256);
+ctx.fillStyle = '#333';
+for (let i = 0; i < 16; i++)
+for (let j = 0; j < 16; j++)
+if ((i + j) % 2 === 0) ctx.fillRect(i * 16, j * 16, 16, 16);
+ctx.fillStyle = '#555';
+ctx.fillRect(0, 120, 256, 16);
+ctx.strokeStyle = '#fff';
+ctx.lineWidth = 2;
+ctx.setLineDash([20, 15]);
+ctx.beginPath();
+ctx.moveTo(128, 0);
+ctx.lineTo(128, 256);
+ctx.stroke();
+ctx.setLineDash([]);
+ctx.fillStyle = '#fff';
+ctx.fillRect(0, 0, 256, 3);
+ctx.fillRect(0, 253, 256, 3);
+const tex = new THREE.CanvasTexture(canvas);
+tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+
+const mat = new THREE.MeshStandardMaterial({ map: tex, roughness: 0.6, metalness: 0.1 });
+const mesh = new THREE.Mesh(geo, mat);
+mesh.receiveShadow = true;
+this.scene.add(mesh);
+}
+
+buildCurbs() {
+const segs = 200;
+const frames = this.spline.computeFrenetFrames(segs, true);
+const hw = CONFIG.trackWidth / 2;
+const curbW = 1.0;
+
+for (let side of [-1, 1]) {
+const verts = [], uvs = [], indices = [];
+for (let i = 0; i <= segs; i++) {
+const p = this.spline.getPointAt(i / segs);
+const b = frames.binormals[i];
+const inner = p.clone().add(b.clone().multiplyScalar(hw * side));
+const outer = p.clone().add(b.clone().multiplyScalar((hw + curbW) * side));
+verts.push(inner.x, inner.y + 0.07, inner.z, outer.x, outer.y + 0.07, outer.z);
+uvs.push(0, i / segs * 40, 1, i / segs * 40);
+}
+for (let i = 0; i < segs; i++) {
+const a = i * 2, b = a + 1;
+const c = ((i + 1) % (segs + 1)) * 2, d = c + 1;
+indices.push(a, c, b, b, c, d);
+}
+const geo = new THREE.BufferGeometry();
+geo.setAttribute('position', new THREE.Float32BufferAttribute(verts, 3));
+geo.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+geo.setIndex(indices);
+geo.computeVertexNormals();
+
+const canvas = document.createElement('canvas');
+canvas.width = 64; canvas.height = 64;
+const ctx = canvas.getContext('2d');
+for (let i = 0; i < 8; i++) {
+ctx.fillStyle = i % 2 === 0 ? '#e74c3c' : '#ffffff';
+ctx.fillRect(i * 8, 0, 8, 64);
+}
+const tex = new THREE.CanvasTexture(canvas);
+tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+const mat = new THREE.MeshStandardMaterial({ map: tex, roughness: 0.5 });
+const mesh = new THREE.Mesh(geo, mat);
+mesh.receiveShadow = true;
+this.scene.add(mesh);
+}
+}
+
+buildBarriers() {
+const segs = 200;
+const frames = this.spline.computeFrenetFrames(segs, true);
+const hw = CONFIG.trackWidth / 2 + 1.3;
+const h = 0.8;
+
+for (let side of [-1, 1]) {
+const verts = [], indices = [];
+for (let i = 0; i <= segs; i++) {
+const p = this.spline.getPointAt(i / segs);
+const b = frames.binormals[i];
+const x = p.x + b.x * hw * side;
+const y = p.y;
+const z = p.z + b.z * hw * side;
+verts.push(x, y, z, x, y + h, z);
+}
+for (let i = 0; i < segs; i++) {
+const a = i * 2, b = a + 1;
+const c = ((i + 1) % (segs + 1)) * 2, d = c + 1;
+if (side === -1) indices.push(a, b, c, b, d, c);
+else indices.push(a, c, b, b, c, d);
+}
+const geo = new THREE.BufferGeometry();
+geo.setAttribute('position', new THREE.Float32BufferAttribute(verts, 3));
+geo.setIndex(indices);
+geo.computeVertexNormals();
+
+const mat = new THREE.MeshStandardMaterial({ color: 0x888888, roughness: 0.4, metalness: 0.5 });
+const mesh = new THREE.Mesh(geo, mat);
+mesh.castShadow = true;
+this.scene.add(mesh);
+}
+}
+
+buildGround() {
+const geo = new THREE.PlaneGeometry(500, 500);
+geo.rotateX(-Math.PI / 2);
+
+const canvas = document.createElement('canvas');
+canvas.width = 128; canvas.height = 128;
+const ctx = canvas.getContext('2d');
+const grad = ctx.createRadialGradient(64, 64, 0, 64, 64, 64);
+grad.addColorStop(0, '#3d7a28');
+grad.addColorStop(1, '#2d5a1e');
+ctx.fillStyle = grad;
+ctx.fillRect(0, 0, 128, 128);
+ctx.fillStyle = '#4a8c35';
+for (let i = 0; i < 40; i++) {
+const x = Math.random() * 120, y = Math.random() * 120;
+ctx.fillRect(x, y, 2 + Math.random() * 3, 2 + Math.random() * 3);
+}
+const tex = new THREE.CanvasTexture(canvas);
+tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+tex.repeat.set(50, 50);
+const mat = new THREE.MeshStandardMaterial({ map: tex, roughness: 0.95 });
+const ground = new THREE.Mesh(geo, mat);
+ground.position.y = -0.1;
+ground.receiveShadow = true;
+this.scene.add(ground);
+}
+
+buildTrees() {
+const count = 400;
+const trunkGeo = new THREE.CylinderGeometry(0.15, 0.25, 2.5, 6);
+const trunkMat = new THREE.MeshStandardMaterial({ color: 0x5a3a1a });
+const leavesGeo1 = new THREE.SphereGeometry(1.8, 8, 6);
+const leavesGeo2 = new THREE.ConeGeometry(1.5, 3.5, 8);
+const leavesMat1 = new THREE.MeshStandardMaterial({ color: 0x2e7d32 });
+const leavesMat2 = new THREE.MeshStandardMaterial({ color: 0x388e3c });
+
+const trunkMesh = new THREE.InstancedMesh(trunkGeo, trunkMat, count);
+const leaves1 = new THREE.InstancedMesh(leavesGeo1, leavesMat1, Math.floor(count * 0.6));
+const leaves2 = new THREE.InstancedMesh(leavesGeo2, leavesMat2, Math.ceil(count * 0.4));
+const dummy = new THREE.Object3D();
+
+let idx1 = 0, idx2 = 0;
+for (let i = 0; i < count; i++) {
+let x, z;
+do {
+x = (Math.random() - 0.5) * 400;
+z = (Math.random() - 0.5) * 400;
+} while (this.distToTrack(x, z) < 18);
+const y = this.getTerrainHeight(x, z);
+const scale = 0.7 + Math.random() * 0.8;
+dummy.position.set(x, y + 1.2 * scale, z);
+dummy.scale.set(scale, scale, scale);
+dummy.updateMatrix();
+trunkMesh.setMatrixAt(i, dummy.matrix);
+if (i < count * 0.6) {
+dummy.position.set(x, y + 3.2 * scale, z);
+dummy.updateMatrix();
+leaves1.setMatrixAt(idx1++, dummy.matrix);
+} else {
+dummy.position.set(x, y + 3.5 * scale, z);
+dummy.updateMatrix();
+leaves2.setMatrixAt(idx2++, dummy.matrix);
+}
+}
+trunkMesh.instanceMatrix.needsUpdate = true;
+leaves1.instanceMatrix.needsUpdate = true;
+leaves2.instanceMatrix.needsUpdate = true;
+this.scene.add(trunkMesh);
+this.scene.add(leaves1);
+this.scene.add(leaves2);
+}
+
+buildStartLine() {
+const p = this.spline.getPointAt(0);
+const t = this.spline.getTangentAt(0);
+const angle = Math.atan2(t.x, t.z);
+const right = new THREE.Vector3(t.z, 0, -t.x).normalize();
+
+const canvas = document.createElement('canvas');
+canvas.width = 128; canvas.height = 32;
+const ctx = canvas.getContext('2d');
+for (let i = 0; i < 16; i++)
+for (let j = 0; j < 4; j++) {
+ctx.fillStyle = (i + j) % 2 === 0 ? '#fff' : '#111';
+ctx.fillRect(i * 8, j * 8, 8, 8);
+}
+const tex = new THREE.CanvasTexture(canvas);
+const geo = new THREE.PlaneGeometry(CONFIG.trackWidth, 2);
+const mat = new THREE.MeshStandardMaterial({ map: tex, roughness: 0.5 });
+const line = new THREE.Mesh(geo, mat);
+line.rotation.x = -Math.PI / 2;
+line.rotation.z = -angle;
+line.position.set(p.x, p.y + 0.08, p.z);
+this.scene.add(line);
+
+const poleGeo = new THREE.CylinderGeometry(0.1, 0.1, 4, 8);
+const poleMat = new THREE.MeshStandardMaterial({ color: 0xcccccc, metalness: 0.7 });
+for (let side of [-1, 1]) {
+const pole = new THREE.Mesh(poleGeo, poleMat);
+const offset = right.clone().multiplyScalar(CONFIG.trackWidth / 2 * side);
+pole.position.set(p.x + offset.x, p.y + 2, p.z + offset.z);
+this.scene.add(pole);
+const flag = new THREE.Mesh(
+new THREE.PlaneGeometry(1.5, 0.8),
+new THREE.MeshStandardMaterial({ color: side === -1 ? 0xe74c3c : 0x3498db, side: THREE.DoubleSide })
+);
+flag.position.set(p.x + offset.x, p.y + 3.6, p.z + offset.z);
+flag.rotation.y = angle;
+this.scene.add(flag);
+}
+}
+
+buildScenery() {
+const p90 = this.spline.getPointAt(0.9);
+const t90 = this.spline.getTangentAt(0.9);
+const right90 = new THREE.Vector3(t90.z, 0, -t90.x).normalize();
+
+const standPos = p90.clone().add(right90.clone().multiplyScalar(25));
+const standGeo = new THREE.BoxGeometry(20, 4, 6);
+const standMat = new THREE.MeshStandardMaterial({ color: 0x34495e, roughness: 0.6 });
+const stand = new THREE.Mesh(standGeo, standMat);
+stand.position.set(standPos.x, standPos.y + 2, standPos.z);
+stand.rotation.y = Math.atan2(t90.x, t90.z);
+stand.castShadow = true;
+this.scene.add(stand);
+
+const roofGeo = new THREE.BoxGeometry(22, 0.3, 8);
+const roofMat = new THREE.MeshStandardMaterial({ color: 0xe74c3c });
+const roof = new THREE.Mesh(roofGeo, roofMat);
+roof.position.set(standPos.x, standPos.y + 4.3, standPos.z);
+roof.rotation.y = Math.atan2(t90.x, t90.z);
+this.scene.add(roof);
+
+for (let i = 0; i < 10; i++) {
+for (let j = 0; j < 3; j++) {
+const seat = new THREE.Mesh(
+new THREE.BoxGeometry(0.5, 0.8, 0.5),
+new THREE.MeshStandardMaterial({ color: [0xe74c3c, 0x3498db, 0xf1c40f][j % 3] })
+);
+const sx = standPos.x + (i - 5) * 1.8;
+const sy = standPos.y + 0.5 + j * 1.2;
+const sz = standPos.z + (j - 1) * 2;
+seat.position.set(sx, sy, sz);
+seat.rotation.y = Math.atan2(t90.x, t90.z);
+this.scene.add(seat);
+}
+}
+
+const p25 = this.spline.getPointAt(0.25);
+const t25 = this.spline.getTangentAt(0.25);
+const right25 = new THREE.Vector3(t25.z, 0, -t25.x).normalize();
+const boardPos = p25.clone().add(right25.clone().multiplyScalar(-20));
+const board = new THREE.Mesh(
+new THREE.BoxGeometry(8, 3, 0.3),
+new THREE.MeshStandardMaterial({ color: 0x2c3e50, roughness: 0.3 })
+);
+board.position.set(boardPos.x, boardPos.y + 2.5, boardPos.z);
+board.rotation.y = Math.atan2(t25.x, t25.z);
+this.scene.add(board);
+
+const tireGeo = new THREE.TorusGeometry(0.4, 0.2, 8, 12);
+const tireMat = new THREE.MeshStandardMaterial({ color: 0x222222 });
+const p60 = this.spline.getPointAt(0.6);
+const t60 = this.spline.getTangentAt(0.6);
+const right60 = new THREE.Vector3(t60.z, 0, -t60.x).normalize();
+for (let i = 0; i < 5; i++) {
+for (let j = 0; j < 3; j++) {
+const tire = new THREE.Mesh(tireGeo, tireMat);
+const tx = p60.x + right60.x * (10 + j * 1.2) - t60.x * (i - 2) * 1.5;
+const tz = p60.z + right60.z * (10 + j * 1.2) - t60.z * (i - 2) * 1.5;
+const ty = this.getTerrainHeight(tx, tz) + 0.4 + j * 0.8;
+tire.position.set(tx, ty, tz);
+tire.rotation.x = Math.PI / 2;
+this.scene.add(tire);
+}
+}
+}
+
+distToTrack(x, z) {
+let minD = Infinity;
+for (let t = 0; t < 1; t += 0.01) {
+const p = this.spline.getPointAt(t);
+const d = Math.sqrt((x - p.x) ** 2 + (z - p.z) ** 2);
+if (d < minD) minD = d;
+}
+return minD;
+}
+
+getTerrainHeight() {
+return 0;
+}
+
+generateWaypoints() {
+this.waypoints = [];
+const n = 100;
+for (let i = 0; i < n; i++) {
+const p = this.spline.getPointAt(i / n);
+const t = this.spline.getTangentAt(i / n);
+this.waypoints.push({ pos: p, tangent: t, index: i });
+}
+}
+
+generateCheckpoints() {
+this.checkpoints = [];
+const n = 10;
+for (let i = 0; i < n; i++) {
+this.checkpoints.push({
+t: i / n,
+pos: this.spline.getPointAt(i / n)
+});
+}
+}
+
+getStartPositions() {
+const positions = [];
+const startT = this.spline.getPointAt(0);
+const tangent = this.spline.getTangentAt(0);
+const right = new THREE.Vector3().crossVectors(tangent, new THREE.Vector3(0, 1, 0)).normalize();
+
+for (let i = 0; i < 6; i++) {
+const row = Math.floor(i / 2);
+const col = (i % 2) === 0 ? -1 : 1;
+const offset = right.clone().multiplyScalar(col * 2.5);
+const back = tangent.clone().multiplyScalar(-row * 4);
+const pos = startT.clone().add(offset).add(back);
+positions.push({ pos, angle: Math.atan2(tangent.x, tangent.z) });
+}
+return positions;
+}
+}
+
+// ========================================
+// 4. KartPhysics
+// ========================================
+class KartPhysics {
+constructor(world, startPos, startAngle, track, mass = CONFIG.kartMass) {
+this.world = world;
+this.track = track;
+this.mass = mass;
+const chassisShape = new CANNON.Box(new CANNON.Vec3(CONFIG.chassisW / 2, CONFIG.chassisH / 2, CONFIG.chassisL / 2));
+this.chassisBody = new CANNON.Body({ mass, material: new CANNON.Material({ friction: 0.8 }) });
+this.chassisBody.addShape(chassisShape);
+this.chassisBody.position.set(startPos.x, startPos.y + 0.5, startPos.z);
+this.chassisBody.linearDamping = 0.01;
+this.chassisBody.angularDamping = 0.99;
+
+const q = new CANNON.Quaternion();
+q.setFromEuler(0, startAngle, 0);
+this.chassisBody.quaternion.copy(q);
+
+this.heading = startAngle;
+world.addBody(this.chassisBody);
+
+this.speed = 0;
+this.isDrifting = false;
+this.currentSplineT = 0;
+}
+
+update(throttle, brake, steer, drift, dt) {
+const vel = this.chassisBody.velocity;
+this.speed = Math.sqrt(vel.x * vel.x + vel.z * vel.z);
+
+// Steering
+if (this.speed > 0.5) {
+const speedRatio = this.speed / CONFIG.maxSpeed;
+const steerLimit = CONFIG.steerAngle * (1 - speedRatio * 0.4);
+const steerInput = steer * steerLimit;
+const turnAmount = steerInput * 3.0 * (0.5 + 0.5 * Math.min(1, this.speed / 10));
+this.heading += turnAmount * dt;
+}
+
+// Apply heading as quaternion
+const headingQuat = new CANNON.Quaternion();
+headingQuat.setFromEuler(0, this.heading, 0);
+this.chassisBody.quaternion.copy(headingQuat);
+
+// Forward direction
+const fwdX = Math.sin(this.heading);
+const fwdZ = Math.cos(this.heading);
+
+// Engine: direct velocity change
+const speedRatio = this.speed / CONFIG.maxSpeed;
+if (throttle > 0) {
+const accel = (CONFIG.engineForce / this.mass) * throttle * (1 - speedRatio * speedRatio);
+vel.x += fwdX * accel * dt;
+vel.z += fwdZ * accel * dt;
+}
+
+// Braking: direct velocity change opposing motion
+if (brake > 0 && this.speed > 0.1) {
+const brakeDecel = this.speed > 3 ? (CONFIG.brakeForce / this.mass) * 15 * brake : (CONFIG.brakeForce / this.mass) * 5 * brake;
+const vLen = this.speed;
+vel.x -= (vel.x / vLen) * brakeDecel * dt;
+vel.z -= (vel.z / vLen) * brakeDecel * dt;
+}
+
+// Lateral friction: remove sideways velocity
+if (this.speed > 1) {
+const dot = vel.x * fwdX + vel.z * fwdZ;
+const projX = fwdX * dot;
+const projZ = fwdZ * dot;
+const sideX = vel.x - projX;
+const sideZ = vel.z - projZ;
+const keep = this.isDrifting ? 0.95 : 0.1;
+vel.x = projX + sideX * keep;
+vel.z = projZ + sideZ * keep;
+}
+
+this.isDrifting = drift && this.speed > 8;
+}
+
+postUpdate() {
+const info = this.getTrackInfo();
+const pos = this.chassisBody.position;
+
+const groundY = info.height + 0.4;
+if (pos.y < groundY) {
+pos.y = groundY;
+this.chassisBody.position = pos;
+if (this.chassisBody.velocity.y < 0) {
+this.chassisBody.velocity.y *= 0.3;
+}
+}
+
+const halfTrack = CONFIG.trackWidth / 2 - 1.0;
+if (Math.abs(info.lateralOffset) > halfTrack) {
+const pushDir = info.lateralOffset > 0 ? -1 : 1;
+const overshoot = Math.abs(info.lateralOffset) - halfTrack;
+pos.x += info.right.x * pushDir * overshoot * 0.5;
+pos.z += info.right.z * pushDir * overshoot * 0.5;
+this.chassisBody.position = pos;
+
+const vel = this.chassisBody.velocity;
+const latVel = vel.x * info.right.x + vel.z * info.right.z;
+vel.x -= info.right.x * latVel;
+vel.z -= info.right.z * latVel;
+}
+
+this.chassisBody.angularVelocity.y *= 0.8;
+}
+
+getTrackInfo() {
+const pos = this.chassisBody.position;
+let minDist = Infinity;
+let bestT = 0;
+if (this.track && this.track.spline) {
+const sp = this.track.spline;
+for (let t = 0; t < 1; t += 0.005) {
+const p = sp.getPointAt(t);
+const d = (pos.x - p.x) ** 2 + (pos.z - p.z) ** 2;
+if (d < minDist) { minDist = d; bestT = t; }
+}
+minDist = Math.sqrt(minDist);
+const step = 0.005;
+const lo = Math.max(0, bestT - step);
+const hi = Math.min(1, bestT + step);
+for (let t = lo; t <= hi; t += 0.0005) {
+const p = sp.getPointAt(t);
+const d = Math.sqrt((pos.x - p.x) ** 2 + (pos.z - p.z) ** 2);
+if (d < minDist) { minDist = d; bestT = t; }
+}
+}
+this.currentSplineT = bestT;
+const nearest = this.track.spline.getPointAt(bestT);
+const tangent = this.track.spline.getTangentAt(bestT);
+const right = { x: tangent.z, y: 0, z: -tangent.x };
+const dx = pos.x - nearest.x;
+const dz = pos.z - nearest.z;
+const lateralOffset = dx * right.x + dz * right.z;
+return { height: nearest.y, nearest, tangent, right, lateralOffset };
+}
+
+getTrackHeight() {
+return this.getTrackInfo().height;
+}
+
+reset(pos, angle) {
+this.heading = angle;
+this.chassisBody.position.set(pos.x, pos.y + 0.5, pos.z);
+this.chassisBody.velocity.set(0, 0, 0);
+this.chassisBody.angularVelocity.set(0, 0, 0);
+const q = new CANNON.Quaternion();
+q.setFromEuler(0, angle, 0);
+this.chassisBody.quaternion.copy(q);
+}
+}
+
+// ========================================
+// 5. KartRenderer
+// ========================================
+class KartRenderer {
+constructor(scene, color) {
+this.group = new THREE.Group();
+const mat = new THREE.MeshStandardMaterial({ color, roughness: 0.25, metalness: 0.75 });
+const darkMat = new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 0.6 });
+const chromeMat = new THREE.MeshStandardMaterial({ color: 0xdddddd, roughness: 0.05, metalness: 0.95 });
+const carbonMat = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.4, metalness: 0.3 });
+const tireMat = new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 0.9 });
+const rimMat = new THREE.MeshStandardMaterial({ color: 0xcccccc, roughness: 0.15, metalness: 0.9 });
+const driverMat = new THREE.MeshStandardMaterial({ color: 0xffcc99 });
+const visorMat = new THREE.MeshStandardMaterial({ color: 0x111133, roughness: 0.05, metalness: 0.8, transparent: true, opacity: 0.85 });
+
+const W = CONFIG.chassisW;
+const H = CONFIG.chassisH;
+const L = CONFIG.chassisL;
+
+// NOTE: +Z = front (nose), -Z = rear (wing) — matches kart forward direction
+
+// ── NOSE CONE (front, +Z) ──
+const noseGeo = new THREE.BoxGeometry(W * 0.5, H * 0.7, L * 0.35);
+noseGeo.translate(0, 0, L * 0.3);
+const nose = new THREE.Mesh(noseGeo, mat);
+nose.position.set(0, 0.15, 0);
+nose.castShadow = true;
+this.group.add(nose);
+
+// Nose tip - tapered cone
+const tipGeo = new THREE.ConeGeometry(W * 0.2, L * 0.18, 4);
+tipGeo.rotateX(Math.PI / 2);
+const tip = new THREE.Mesh(tipGeo, mat);
+tip.position.set(0, 0.15, L * 0.53);
+tip.castShadow = true;
+this.group.add(tip);
+
+// Nose pillars
+for (let x of [-W * 0.15, W * 0.15]) {
+const pillar = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.07, L * 0.18), carbonMat);
+pillar.position.set(x, 0.11, L * 0.22);
+this.group.add(pillar);
+}
+
+// ── FRONT WING (front, +Z) ──
+const fwGeo = new THREE.BoxGeometry(W * 1.9, 0.025, 0.14);
+const fw = new THREE.Mesh(fwGeo, carbonMat);
+fw.position.set(0, 0.07, L * 0.5);
+fw.castShadow = true;
+this.group.add(fw);
+
+// Front wing flaps (multi-element)
+for (let i = 0; i < 2; i++) {
+const flap = new THREE.Mesh(
+new THREE.BoxGeometry(W * 1.7, 0.015, 0.04),
+carbonMat
+);
+flap.position.set(0, 0.09 + i * 0.022, L * 0.48 - i * 0.03);
+flap.rotation.x = 0.15 + i * 0.1;
+this.group.add(flap);
+}
+
+// Front wing endplates
+for (let side of [-1, 1]) {
+const ep = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.1, 0.2), carbonMat);
+ep.position.set(side * W * 0.92, 0.11, L * 0.5);
+this.group.add(ep);
+const strake = new THREE.Mesh(new THREE.BoxGeometry(0.015, 0.055, 0.1), carbonMat);
+strake.position.set(side * W * 0.55, 0.09, L * 0.5);
+this.group.add(strake);
+}
+
+// ── MAIN CHASSIS / MONOCOQUE ──
+const bodyGeo = new THREE.BoxGeometry(W, H * 1.2, L * 0.55);
+bodyGeo.translate(0, 0, -L * 0.02);
+const body = new THREE.Mesh(bodyGeo, mat);
+body.position.set(0, 0.18, 0);
+body.castShadow = true;
+this.group.add(body);
+
+// Chassis top taper
+const topGeo = new THREE.BoxGeometry(W * 0.82, H * 0.35, L * 0.32);
+topGeo.translate(0, 0, -L * 0.05);
+const topCover = new THREE.Mesh(topGeo, mat);
+topCover.position.set(0, 0.35, 0);
+this.group.add(topCover);
+
+// ── SIDE PODS ──
+for (let side of [-1, 1]) {
+const podGeo = new THREE.BoxGeometry(W * 0.36, H * 1.4, L * 0.38);
+podGeo.translate(0, 0, -L * 0.02);
+const pod = new THREE.Mesh(podGeo, mat);
+pod.position.set(side * W * 0.58, 0.17, 0);
+pod.castShadow = true;
+this.group.add(pod);
+
+const podTop = new THREE.Mesh(
+new THREE.BoxGeometry(W * 0.33, 0.04, L * 0.32),
+mat
+);
+podTop.position.set(side * W * 0.58, 0.34, -L * 0.02);
+this.group.add(podTop);
+
+const intakeGeo = new THREE.BoxGeometry(W * 0.28, H * 0.8, 0.04);
+const intake = new THREE.Mesh(intakeGeo, darkMat);
+intake.position.set(side * W * 0.58, 0.19, L * 0.14);
+this.group.add(intake);
+
+for (let j = 0; j < 3; j++) {
+const louver = new THREE.Mesh(
+new THREE.BoxGeometry(0.015, 0.025, 0.06),
+darkMat
+);
+louver.position.set(side * W * 0.75, 0.16 + j * 0.045, -L * 0.02 - j * 0.06);
+this.group.add(louver);
+}
+}
+
+// ── COCKPIT ──
+const cockpitGeo = new THREE.BoxGeometry(W * 0.5, H * 0.22, L * 0.2);
+const cockpit = new THREE.Mesh(cockpitGeo, darkMat);
+cockpit.position.set(0, 0.37, L * 0.05);
+this.group.add(cockpit);
+
+const seatGeo = new THREE.BoxGeometry(W * 0.38, H * 0.5, L * 0.16);
+const seat = new THREE.Mesh(seatGeo, darkMat);
+seat.position.set(0, 0.24, L * 0.05);
+this.group.add(seat);
+
+// ── HALO ──
+const haloGroup = new THREE.Group();
+const haloTopGeo = new THREE.TorusGeometry(0.17, 0.022, 8, 12, Math.PI);
+const haloTop = new THREE.Mesh(haloTopGeo, chromeMat);
+haloTop.rotation.y = Math.PI / 2;
+haloTop.rotation.z = Math.PI;
+haloTop.position.set(0, 0.50, L * 0.08);
+haloGroup.add(haloTop);
+
+const haloLPillar = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.17, 6), chromeMat);
+haloLPillar.position.set(-W * 0.2, 0.42, L * 0.08);
+haloGroup.add(haloLPillar);
+
+const haloRPillar = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.17, 6), chromeMat);
+haloRPillar.position.set(W * 0.2, 0.42, L * 0.08);
+haloGroup.add(haloRPillar);
+
+const haloCPillar = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.12, 6), chromeMat);
+haloCPillar.position.set(0, 0.44, L * 0.18);
+haloCPillar.rotation.x = -0.5;
+haloGroup.add(haloCPillar);
+
+const haloRP = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.018, 0.1, 6), chromeMat);
+haloRP.position.set(0, 0.44, -L * 0.02);
+haloRP.rotation.x = 0.4;
+haloGroup.add(haloRP);
+this.group.add(haloGroup);
+
+// ── DRIVER ──
+const torso = new THREE.Mesh(new THREE.BoxGeometry(W * 0.28, H * 1.3, L * 0.1), mat);
+torso.position.set(0, 0.30, L * 0.04);
+this.group.add(torso);
+
+const head = new THREE.Mesh(new THREE.SphereGeometry(0.1, 10, 10), driverMat);
+head.position.set(0, 0.47, L * 0.06);
+this.group.add(head);
+
+const helmetGeo = new THREE.SphereGeometry(0.12, 10, 10);
+const helmet = new THREE.Mesh(helmetGeo, mat);
+helmet.position.set(0, 0.48, L * 0.06);
+helmet.scale.set(1, 0.85, 1.1);
+this.group.add(helmet);
+
+const visor = new THREE.Mesh(new THREE.BoxGeometry(W * 0.17, 0.04, 0.06), visorMat);
+visor.position.set(0, 0.47, L * 0.16);
+visor.rotation.x = -0.15;
+this.group.add(visor);
+
+// ── AIRBOX ──
+const airboxGeo = new THREE.BoxGeometry(W * 0.24, H * 0.65, L * 0.1);
+const airbox = new THREE.Mesh(airboxGeo, mat);
+airbox.position.set(0, 0.47, -L * 0.02);
+this.group.add(airbox);
+const airIntake = new THREE.Mesh(new THREE.BoxGeometry(W * 0.19, H * 0.35, 0.02), darkMat);
+airIntake.position.set(0, 0.49, L * 0.03);
+this.group.add(airIntake);
+
+// ── ENGINE COVER (rear, -Z) ──
+const engGeo = new THREE.BoxGeometry(W * 0.72, H * 1.1, L * 0.26);
+engGeo.translate(0, 0, -L * 0.24);
+const engCover = new THREE.Mesh(engGeo, mat);
+engCover.position.set(0, 0.28, 0);
+engCover.castShadow = true;
+this.group.add(engCover);
+
+// Shark fin
+const finGeo = new THREE.BoxGeometry(0.02, H * 1.3, L * 0.18);
+const fin = new THREE.Mesh(finGeo, mat);
+fin.position.set(0, 0.42, -L * 0.3);
+this.group.add(fin);
+
+// Exhaust pipes
+for (let side of [-1, 1]) {
+const exhaust = new THREE.Mesh(
+new THREE.CylinderGeometry(0.03, 0.04, 0.08, 8),
+chromeMat
+);
+exhaust.rotation.x = Math.PI / 2;
+exhaust.position.set(side * 0.12, 0.18, -L * 0.44);
+this.group.add(exhaust);
+}
+
+// ── REAR WING (rear, -Z) ──
+const rwGeo = new THREE.BoxGeometry(W * 1.7, 0.06, 0.08);
+const rw = new THREE.Mesh(rwGeo, carbonMat);
+rw.position.set(0, 0.50, -L * 0.44);
+rw.castShadow = true;
+this.group.add(rw);
+
+const rwFlap = new THREE.Mesh(
+new THREE.BoxGeometry(W * 1.6, 0.04, 0.05),
+carbonMat
+);
+rwFlap.position.set(0, 0.57, -L * 0.44);
+rwFlap.rotation.x = 0.2;
+this.group.add(rwFlap);
+
+for (let side of [-1, 1]) {
+const rwEp = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.18, 0.13), carbonMat);
+rwEp.position.set(side * W * 0.82, 0.50, -L * 0.44);
+this.group.add(rwEp);
+}
+
+for (let side of [-1, 1]) {
+const pillarGeo = new THREE.CylinderGeometry(0.015, 0.015, 0.22, 6);
+const pillar = new THREE.Mesh(pillarGeo, carbonMat);
+pillar.position.set(side * W * 0.35, 0.39, -L * 0.4);
+pillar.rotation.x = 0.2;
+this.group.add(pillar);
+}
+
+// ── REAR DIFFUSER (rear, -Z) ──
+const diffGeo = new THREE.BoxGeometry(W * 0.88, 0.08, 0.12);
+const diff = new THREE.Mesh(diffGeo, carbonMat);
+diff.position.set(0, 0.09, -L * 0.48);
+this.group.add(diff);
+for (let i = -2; i <= 2; i++) {
+const strake = new THREE.Mesh(new THREE.BoxGeometry(0.012, 0.06, 0.1), carbonMat);
+strake.position.set(i * W * 0.15, 0.11, -L * 0.48);
+this.group.add(strake);
+}
+
+// ── SUSPENSION ARMS ──
+const armMat = carbonMat;
+const armGeo = new THREE.CylinderGeometry(0.012, 0.012, 0.42, 5);
+const suspPos = [
+{ x: -W * 0.78, z: L * 0.34 },   // FL
+{ x: W * 0.78, z: L * 0.34 },    // FR
+{ x: -W * 0.72, z: -L * 0.34 },  // RL
+{ x: W * 0.72, z: -L * 0.34 }    // RR
+];
+for (const sp of suspPos) {
+const uArm = new THREE.Mesh(armGeo, armMat);
+const armAngle = Math.atan2(sp.x, 0.38);
+uArm.rotation.z = armAngle;
+uArm.position.set(sp.x * 0.42, 0.28, sp.z);
+this.group.add(uArm);
+const lArm = new THREE.Mesh(armGeo, armMat);
+lArm.rotation.z = armAngle;
+lArm.position.set(sp.x * 0.42, 0.12, sp.z);
+this.group.add(lArm);
+}
+
+// ── WHEELS (F1 slick tires) ──
+this.wheels = [];
+const wheelPositions = [
+{ x: -W * 0.78, z: L * 0.34, r: CONFIG.wheelRadius * 0.92 },
+{ x: W * 0.78, z: L * 0.34, r: CONFIG.wheelRadius * 0.92 },
+{ x: -W * 0.72, z: -L * 0.34, r: CONFIG.wheelRadius },
+{ x: W * 0.72, z: -L * 0.34, r: CONFIG.wheelRadius }
+];
+
+for (const wp of wheelPositions) {
+const wheelGroup = new THREE.Group();
+const isFront = wp.z > 0;
+const tireW = isFront ? 0.14 : 0.19;
+
+const tire = new THREE.Mesh(
+new THREE.CylinderGeometry(wp.r, wp.r, tireW, 20),
+tireMat
+);
+tire.rotation.z = Math.PI / 2;
+tire.castShadow = true;
+wheelGroup.add(tire);
+
+const sidewall = new THREE.Mesh(
+new THREE.TorusGeometry(wp.r * 0.85, 0.02, 6, 16),
+tireMat
+);
+sidewall.rotation.y = Math.PI / 2;
+sidewall.position.x = tireW * 0.48;
+wheelGroup.add(sidewall);
+const sidewall2 = sidewall.clone();
+sidewall2.position.x = -tireW * 0.48;
+wheelGroup.add(sidewall2);
+
+const rimDisc = new THREE.Mesh(
+new THREE.CylinderGeometry(wp.r * 0.7, wp.r * 0.7, 0.02, 20),
+rimMat
+);
+rimDisc.rotation.z = Math.PI / 2;
+rimDisc.position.x = tireW * 0.49;
+wheelGroup.add(rimDisc);
+
+for (let s = 0; s < 5; s++) {
+const spoke = new THREE.Mesh(
+new THREE.BoxGeometry(0.015, wp.r * 1.2, 0.025),
+rimMat
+);
+spoke.rotation.z = (s / 5) * Math.PI;
+spoke.position.x = tireW * 0.49;
+wheelGroup.add(spoke);
+}
+
+const lockNut = new THREE.Mesh(
+new THREE.CylinderGeometry(0.03, 0.03, 0.03, 6),
+chromeMat
+);
+lockNut.rotation.z = Math.PI / 2;
+lockNut.position.x = tireW * 0.52;
+wheelGroup.add(lockNut);
+
+const duct = new THREE.Mesh(
+new THREE.CylinderGeometry(wp.r * 0.45, wp.r * 0.5, 0.04, 12),
+darkMat
+);
+duct.rotation.z = Math.PI / 2;
+duct.position.x = -tireW * 0.45;
+wheelGroup.add(duct);
+
+wheelGroup.position.set(wp.x, 0.18, wp.z);
+this.group.add(wheelGroup);
+this.wheels.push(wheelGroup);
+}
+
+scene.add(this.group);
+}
+
+update(physics) {
+const b = physics.chassisBody;
+this.group.position.set(b.position.x, b.position.y, b.position.z);
+const q = new THREE.Quaternion(b.quaternion.x, b.quaternion.y, b.quaternion.z, b.quaternion.w);
+const flip = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI);
+q.multiply(flip);
+this.group.quaternion.copy(q);
+}
+}
+
+// ========================================
+// 6. Kart
+// ========================================
+class Kart {
+constructor(scene, world, startPos, startAngle, color, index, isPlayer = false, track = null) {
+this.index = index;
+this.isPlayer = isPlayer;
+this.name = CONFIG.kartNames[index];
+this.color = color;
+this.physics = new KartPhysics(world, startPos, startAngle, track);
+this.renderer = new KartRenderer(scene, color);
+this.lap = 0;
+this.checkpoint = 0;
+this.lastCheckpointTime = 0;
+this.totalCheckpoints = 0;
+this.finished = false;
+this.finishTime = 0;
+this.position = index + 1;
+this.currentSplineT = 0;
+}
+
+update(input, dt) {
+this.physics.update(input.throttle, input.brake, input.steer, input.drift, dt);
+this.renderer.update(this.physics);
+}
+
+reset(pos, angle) {
+this.physics.reset(pos, angle);
+}
+}
+
+// ========================================
+// 7. AIController
+// ========================================
+class AIController {
+constructor(difficulty, track) {
+this.track = track;
+this.speedCoeff = CONFIG.aiSpeeds[difficulty];
+this.lookahead = CONFIG.aiLookaheads[difficulty];
+this.nearestIdx = 0;
+this.difficulty = difficulty;
+}
+
+getInput(kart) {
+const pos = kart.physics.chassisBody.position;
+const vel = kart.physics.chassisBody.velocity;
+const speed = Math.sqrt(vel.x * vel.x + vel.y * vel.y + vel.z * vel.z);
+
+// Find nearest waypoint
+let minDist = Infinity;
+const wps = this.track.waypoints;
+const searchStart = (this.nearestIdx - 15 + wps.length) % wps.length;
+for (let j = 0; j < 30; j++) {
+const idx = (searchStart + j) % wps.length;
+const wp = wps[idx];
+const d = Math.sqrt((pos.x - wp.pos.x) ** 2 + (pos.z - wp.pos.z) ** 2);
+if (d < minDist) { minDist = d; this.nearestIdx = idx; }
+}
+
+// Look ahead
+const lookIdx = (this.nearestIdx + this.lookahead) % wps.length;
+const target = wps[lookIdx].pos;
+
+// Calculate steering
+const dx = target.x - pos.x;
+const dz = target.z - pos.z;
+const dist = Math.sqrt(dx * dx + dz * dz);
+
+const chassis = kart.physics.chassisBody;
+const angle = Math.atan2(dx, dz);
+const kartAngle = kart.physics.heading;
+let diff = angle - kartAngle;
+while (diff > Math.PI) diff -= Math.PI * 2;
+while (diff < -Math.PI) diff += Math.PI * 2;
+
+const steer = Math.max(-1, Math.min(1, diff * 3));
+
+// Throttle/brake - use nearby waypoint curvature, not distant lookahead
+const nearIdx = (this.nearestIdx + 3) % wps.length;
+const nearPt = wps[nearIdx].pos;
+const nearAngle = Math.atan2(nearPt.x - pos.x, nearPt.z - pos.z);
+let nearDiff = nearAngle - kartAngle;
+while (nearDiff > Math.PI) nearDiff -= Math.PI * 2;
+while (nearDiff < -Math.PI) nearDiff += Math.PI * 2;
+const nearDist = Math.sqrt((nearPt.x - pos.x) ** 2 + (nearPt.z - pos.z) ** 2);
+const curvature = Math.abs(nearDiff) / (nearDist + 1) * 100;
+let throttle = this.speedCoeff;
+let brake = 0;
+
+if (curvature > 3 && speed > 15) {
+brake = 0.5;
+throttle = 0.3;
+}
+if (curvature > 6) {
+brake = 0.8;
+throttle = 0.1;
+}
+
+// Rubber band
+const playerKart = kart;
+if (kart.position > 3) throttle *= 1.1;
+if (kart.position <= 1) throttle *= 0.95;
+
+return {
+throttle: Math.max(0, Math.min(1, throttle)),
+brake: Math.max(0, Math.min(1, brake)),
+steer,
+drift: false
+};
+}
+}
+
+// ========================================
+// 8. CameraController
+// ========================================
+class CameraController {
+constructor(camera) {
+this.camera = camera;
+this.offset = new THREE.Vector3(0, CONFIG.cameraHeight, -CONFIG.cameraDistance);
+this.lookOffset = new THREE.Vector3(0, 1, 5);
+}
+
+update(targetKart, dt) {
+const b = targetKart.physics.chassisBody;
+const pos = new THREE.Vector3(b.position.x, b.position.y, b.position.z);
+const heading = targetKart.physics.heading;
+const quat = new THREE.Quaternion().setFromEuler(new THREE.Euler(0, heading, 0, 'YXZ'));
+
+const desiredPos = this.offset.clone().applyQuaternion(quat).add(pos);
+const lookAt = this.lookOffset.clone().applyQuaternion(quat).add(pos);
+
+const lerp = 1 - Math.pow(0.06, dt * 60);
+this.camera.position.lerp(desiredPos, lerp);
+
+const currentLook = new THREE.Vector3();
+this.camera.getWorldDirection(currentLook);
+currentLook.multiplyScalar(10).add(this.camera.position);
+currentLook.lerp(lookAt, lerp);
+this.camera.lookAt(lookAt);
+
+const speed = targetKart.physics.speed;
+const targetFov = 60 + (speed / CONFIG.maxSpeed) * 15;
+this.camera.fov += (targetFov - this.camera.fov) * lerp;
+this.camera.updateProjectionMatrix();
+}
+}
+
+// ========================================
+// 9. RaceManager
+// ========================================
+class RaceManager {
+constructor() {
+this.state = 'MENU';
+this.countdownTime = 0;
+this.raceTime = 0;
+this.karts = [];
+this.finishedKarts = [];
+this.numCheckpoints = 10;
+this.totalLaps = CONFIG.totalLaps;
+}
+
+startCountdown() {
+this.state = 'COUNTDOWN';
+this.countdownTime = 3.5;
+this.raceTime = 0;
+this.finishedKarts = [];
+for (const k of this.karts) {
+k.lap = 0;
+k.checkpoint = 0;
+k.totalCheckpoints = 0;
+k.finished = false;
+k.finishTime = 0;
+}
+}
+
+update(dt) {
+if (this.state === 'COUNTDOWN') {
+this.countdownTime -= dt;
+if (this.countdownTime <= 0) this.state = 'RACING';
+}
+if (this.state === 'RACING') {
+this.raceTime += dt;
+this.updatePositions();
+this.checkFinish();
+}
+}
+
+updateCheckpoints(kart) {
+if (kart.finished) return;
+kart.currentSplineT = kart.physics.currentSplineT;
+const bestT = kart.currentSplineT;
+
+// Checkpoint logic
+const cpIdx = Math.floor(bestT * this.numCheckpoints) % this.numCheckpoints;
+if (cpIdx !== kart.checkpoint) {
+if (cpIdx === (kart.checkpoint + 1) % this.numCheckpoints) {
+kart.checkpoint = cpIdx;
+kart.totalCheckpoints++;
+if (cpIdx === 0 && kart.totalCheckpoints >= this.numCheckpoints) {
+kart.lap++;
+if (kart.lap >= this.totalLaps) {
+kart.finished = true;
+kart.finishTime = this.raceTime;
+this.finishedKarts.push(kart);
+}
+}
+}
+}
+}
+
+updatePositions() {
+const sorted = [...this.karts].sort((a, b) => {
+if (a.finished && !b.finished) return -1;
+if (!a.finished && b.finished) return 1;
+if (a.finished && b.finished) return a.finishTime - b.finishTime;
+if (a.lap !== b.lap) return b.lap - a.lap;
+return b.totalCheckpoints - a.totalCheckpoints;
+});
+sorted.forEach((k, i) => { k.position = i + 1; });
+}
+
+checkFinish() {
+if (this.finishedKarts.length >= this.karts.length) {
+this.state = 'FINISHED';
+}
+// Auto-finish after max time
+if (this.raceTime > 300) {
+this.state = 'FINISHED';
+}
+}
+
+getRankText(kart) {
+return `#${kart.position} / ${this.karts.length}`;
+}
+
+getTimeText(time) {
+const m = Math.floor(time / 60);
+const s = Math.floor(time % 60);
+const ms = Math.floor((time % 1) * 100);
+return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}.${String(ms).padStart(2, '0')}`;
+}
+}
+
+// ========================================
+// 10. MiniMap
+// ========================================
+class MiniMap {
+constructor(canvas, track) {
+this.canvas = canvas;
+this.ctx = canvas.getContext('2d');
+this.track = track;
+this.trackPoints = [];
+const n = 200;
+let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
+for (let i = 0; i < n; i++) {
+const p = track.spline.getPointAt(i / n);
+this.trackPoints.push(p);
+if (p.x < minX) minX = p.x;
+if (p.x > maxX) maxX = p.x;
+if (p.z < minZ) minZ = p.z;
+if (p.z > maxZ) maxZ = p.z;
+}
+const margin = 15;
+this.minX = minX - margin;
+this.maxX = maxX + margin;
+this.minZ = minZ - margin;
+this.maxZ = maxZ + margin;
+}
+
+toScreen(x, z) {
+const sx = ((x - this.minX) / (this.maxX - this.minX)) * 140 + 10;
+const sy = ((z - this.minZ) / (this.maxZ - this.minZ)) * 140 + 10;
+return [sx, sy];
+}
+
+draw(karts) {
+const ctx = this.ctx;
+ctx.clearRect(0, 0, 160, 160);
+
+// Draw track
+ctx.strokeStyle = '#666';
+ctx.lineWidth = 3;
+ctx.beginPath();
+for (let i = 0; i < this.trackPoints.length; i++) {
+const [sx, sy] = this.toScreen(this.trackPoints[i].x, this.trackPoints[i].z);
+if (i === 0) ctx.moveTo(sx, sy);
+else ctx.lineTo(sx, sy);
+}
+ctx.closePath();
+ctx.stroke();
+
+// Draw karts
+for (const kart of karts) {
+const p = kart.physics.chassisBody.position;
+const [sx, sy] = this.toScreen(p.x, p.z);
+ctx.fillStyle = kart.isPlayer ? '#fff' : '#' + kart.color.toString(16).padStart(6, '0');
+ctx.beginPath();
+ctx.arc(sx, sy, kart.isPlayer ? 5 : 3, 0, Math.PI * 2);
+ctx.fill();
+if (kart.isPlayer) {
+ctx.strokeStyle = '#fff';
+ctx.lineWidth = 1;
+ctx.stroke();
+}
+}
+}
+}
+
+// ========================================
+// 11. HUD
+// ========================================
+class HUD {
+constructor() {
+this.elPosition = document.getElementById('hud-position');
+this.elLap = document.getElementById('hud-lap');
+this.elTime = document.getElementById('hud-time');
+this.elSpeed = document.getElementById('hud-speed');
+this.elCountdown = document.getElementById('hud-countdown');
+this.elHud = document.getElementById('hud');
+}
+
+show() { this.elHud.style.display = 'block'; }
+hide() { this.elHud.style.display = 'none'; }
+
+update(playerKart, raceManager) {
+this.elPosition.textContent = raceManager.getRankText(playerKart);
+this.elLap.textContent = `圈 ${Math.min(playerKart.lap + 1, CONFIG.totalLaps)} / ${CONFIG.totalLaps}`;
+this.elTime.textContent = raceManager.getTimeText(raceManager.raceTime);
+const speed = Math.round(playerKart.physics.speed * 3.6);
+this.elSpeed.textContent = `${speed} km/h`;
+}
+
+showCountdown(time) {
+if (time > 0.5) {
+this.elCountdown.style.display = 'block';
+this.elCountdown.textContent = Math.ceil(time - 0.5);
+} else if (time > 0) {
+this.elCountdown.textContent = 'GO!';
+this.elCountdown.style.color = '#2ecc71';
+} else {
+this.elCountdown.style.display = 'none';
+this.elCountdown.style.color = '#e94560';
+}
+}
+}
+
+// ========================================
+// 12. ParticleSystem
+// ========================================
+class ParticleSystem {
+constructor(scene) {
+this.scene = scene;
+this.particles = [];
+this.sharedGeo = new THREE.SphereGeometry(0.3, 6, 6);
+this.emitTimer = 0;
+}
+
+emitDriftSmoke(position) {
+this.emitTimer += 0.016;
+if (this.emitTimer < 0.05) return;
+this.emitTimer = 0;
+
+const mat = new THREE.MeshBasicMaterial({ color: 0x888888, transparent: true, opacity: 0.5 });
+const mesh = new THREE.Mesh(this.sharedGeo, mat);
+mesh.position.copy(position);
+mesh.position.y += 0.2;
+this.scene.add(mesh);
+this.particles.push({ mesh, life: 1.0, vy: 0.5 });
+}
+
+update(dt) {
+for (let i = this.particles.length - 1; i >= 0; i--) {
+const p = this.particles[i];
+p.life -= dt * 2;
+p.mesh.position.y += p.vy * dt;
+p.mesh.material.opacity = Math.max(0, p.life * 0.5);
+const s = 1 + (1 - p.life) * 2;
+p.mesh.scale.set(s, s, s);
+if (p.life <= 0) {
+this.scene.remove(p.mesh);
+p.mesh.material.dispose();
+this.particles.splice(i, 1);
+}
+}
+}
+}
+
+// ========================================
+// 13. Game
+// ========================================
+class Game {
+constructor() {
+this.renderer = null;
+this.scene = null;
+this.camera = null;
+this.physicsWorld = null;
+this.track = null;
+this.karts = [];
+this.player = null;
+this.aiControllers = [];
+this.cameraController = null;
+this.raceManager = null;
+this.hud = null;
+this.minimap = null;
+this.particles = null;
+this.input = null;
+this.clock = null;
+this.accumulator = 0;
+this.fixedDt = 1 / 60;
+this.running = false;
+}
+
+init() {
+// Renderer
+this.renderer = new THREE.WebGLRenderer({ antialias: true });
+this.renderer.setSize(window.innerWidth, window.innerHeight);
+this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+this.renderer.shadowMap.enabled = true;
+this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+this.renderer.toneMappingExposure = 1.2;
+document.body.appendChild(this.renderer.domElement);
+
+// Scene
+this.scene = new THREE.Scene();
+this.scene.background = new THREE.Color(0x87ceeb);
+this.scene.fog = new THREE.Fog(0x87ceeb, 100, 300);
+
+// Camera
+this.camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 500);
+
+// Lights
+const ambient = new THREE.AmbientLight(0xffffff, 0.4);
+this.scene.add(ambient);
+
+const sun = new THREE.DirectionalLight(0xffffff, 1.0);
+sun.position.set(50, 100, 50);
+sun.castShadow = true;
+sun.shadow.mapSize.set(2048, 2048);
+sun.shadow.camera.left = -80;
+sun.shadow.camera.right = 80;
+sun.shadow.camera.top = 80;
+sun.shadow.camera.bottom = -80;
+sun.shadow.camera.near = 1;
+sun.shadow.camera.far = 200;
+this.sun = sun;
+this.scene.add(sun);
+this.scene.add(sun.target);
+
+// Physics
+this.physicsWorld = new CANNON.World({
+gravity: new CANNON.Vec3(0, -9.82, 0)
+});
+this.physicsWorld.defaultContactMaterial.friction = 0.3;
+
+// Track
+this.track = new TrackBuilder(this.scene, this.physicsWorld);
+this.track.build();
+
+// Ground plane for physics (prevents karts from falling through)
+const groundBody = new CANNON.Body({
+mass: 0,
+material: new CANNON.Material({ friction: 0.5, restitution: 0.1 })
+});
+groundBody.addShape(new CANNON.Plane());
+groundBody.quaternion.setFromEuler(-Math.PI / 2, 0, 0);
+groundBody.position.set(0, -0.1, 0);
+this.physicsWorld.addBody(groundBody);
+
+// Input
+this.input = new InputManager();
+
+// Create karts
+const startPositions = this.track.getStartPositions();
+this.karts = [];
+
+// Player kart
+this.player = new Kart(this.scene, this.physicsWorld, startPositions[0].pos, startPositions[0].angle, CONFIG.colors[0], 0, true, this.track);
+this.karts.push(this.player);
+
+// AI karts
+this.aiControllers = [];
+for (let i = 0; i < CONFIG.numAI; i++) {
+const kart = new Kart(this.scene, this.physicsWorld, startPositions[i + 1].pos, startPositions[i + 1].angle, CONFIG.colors[i + 1], i + 1, false, this.track);
+this.karts.push(kart);
+this.aiControllers.push(new AIController(i, this.track));
+}
+
+// RaceManager
+this.raceManager = new RaceManager();
+this.raceManager.karts = this.karts;
+this.raceManager.track = this.track;
+
+// Camera
+this.cameraController = new CameraController(this.camera);
+
+// HUD & MiniMap
+this.hud = new HUD();
+this.minimap = new MiniMap(document.getElementById('minimap'), this.track);
+
+// Particles
+this.particles = new ParticleSystem(this.scene);
+
+// Clock
+this.clock = new THREE.Clock();
+
+// Events
+window.addEventListener('resize', () => this.onResize());
+document.getElementById('startBtn').addEventListener('click', () => this.startRace());
+document.getElementById('restartBtn').addEventListener('click', () => this.startRace());
+}
+
+startRace() {
+document.getElementById('menu').style.display = 'none';
+document.getElementById('results').style.display = 'none';
+this.hud.show();
+
+// Reset positions
+const startPositions = this.track.getStartPositions();
+for (let i = 0; i < this.karts.length; i++) {
+this.karts[i].reset(startPositions[i].pos, startPositions[i].angle);
+}
+
+this.raceManager.startCountdown();
+this.running = true;
+this.clock.start();
+this.animate();
+}
+
+animate() {
+if (!this.running) return;
+requestAnimationFrame(() => this.animate());
+
+let dt = this.clock.getDelta();
+if (dt > 0.1) dt = 0.1;
+
+// Update race state
+this.raceManager.update(dt);
+
+// Handle input based on race state
+if (this.raceManager.state === 'RACING') {
+// Cache input once per frame
+const playerInput = this.input.getInput();
+const aiInputs = this.aiControllers.map((ai, i) => ai.getInput(this.karts[i + 1]));
+
+// Physics loop: apply forces then step each substep
+this.accumulator += dt;
+while (this.accumulator >= this.fixedDt) {
+// Apply forces before each physics step
+this.player.update(playerInput, this.fixedDt);
+for (let i = 0; i < this.aiControllers.length; i++) {
+this.karts[i + 1].update(aiInputs[i], this.fixedDt);
+}
+this.physicsWorld.step(this.fixedDt);
+this.accumulator -= this.fixedDt;
+}
+
+// Post-physics ground/boundary correction
+for (const kart of this.karts) {
+kart.physics.postUpdate();
+}
+
+// Drift particles
+if (this.player.physics.isDrifting) {
+const pos = this.player.physics.chassisBody.position;
+this.particles.emitDriftSmoke(new THREE.Vector3(pos.x, pos.y, pos.z));
+}
+
+// Update checkpoints
+for (const kart of this.karts) {
+this.raceManager.updateCheckpoints(kart);
+}
+
+// Respawn karts that fell off track
+for (const kart of this.karts) {
+if (kart.physics.chassisBody.position.y < -5) {
+const t = kart.physics.currentSplineT || 0;
+const p = this.track.spline.getPointAt(t);
+const tang = this.track.spline.getTangentAt(t);
+const angle = Math.atan2(tang.x, tang.z);
+kart.physics.reset(p, angle);
+}
+}
+
+// Camera
+this.cameraController.update(this.player, dt);
+
+// Sun follows player
+const pp = this.player.physics.chassisBody.position;
+this.sun.position.set(pp.x + 50, 100, pp.z + 50);
+this.sun.target.position.set(pp.x, 0, pp.z);
+this.sun.target.updateMatrixWorld();
+
+// HUD
+this.hud.update(this.player, this.raceManager);
+this.minimap.draw(this.karts);
+
+// Particles
+this.particles.update(dt);
+
+} else if (this.raceManager.state === 'COUNTDOWN') {
+this.hud.showCountdown(this.raceManager.countdownTime);
+
+// Physics step (for stability)
+this.accumulator += dt;
+while (this.accumulator >= this.fixedDt) {
+this.physicsWorld.step(this.fixedDt);
+this.accumulator -= this.fixedDt;
+}
+
+// Camera still works during countdown
+this.cameraController.update(this.player, dt);
+this.minimap.draw(this.karts);
+
+} else if (this.raceManager.state === 'FINISHED') {
+this.showResults();
+this.running = false;
+}
+
+this.renderer.render(this.scene, this.camera);
+}
+
+showResults() {
+this.hud.hide();
+const table = document.getElementById('results-table');
+table.innerHTML = '<tr><th>名次</th><th>选手</th><th>时间</th></tr>';
+
+const sorted = [...this.karts].sort((a, b) => {
+if (a.finished && !b.finished) return -1;
+if (!a.finished && b.finished) return 1;
+return (a.finishTime || 999) - (b.finishTime || 999);
+});
+
+for (const kart of sorted) {
+const time = kart.finished ? this.raceManager.getTimeText(kart.finishTime) : '未完赛';
+const tr = document.createElement('tr');
+tr.innerHTML = `<td>#${kart.position}</td><td style="color:#${kart.color.toString(16).padStart(6, '0')}">${kart.name}</td><td>${time}</td>`;
+table.appendChild(tr);
+}
+
+document.getElementById('results').style.display = 'flex';
+}
+
+onResize() {
+this.camera.aspect = window.innerWidth / window.innerHeight;
+this.camera.updateProjectionMatrix();
+this.renderer.setSize(window.innerWidth, window.innerHeight);
+}
+}
+
+// ========================================
+// Start
+// ========================================
+const game = new Game();
+game.init();
+</script>
+</body>
+</html>
