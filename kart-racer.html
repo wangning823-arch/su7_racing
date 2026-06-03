@@ -651,7 +651,7 @@ const speedRatio = this.speed / CONFIG.maxSpeed;
 const steerLimit = CONFIG.steerAngle * (1 - speedRatio * 0.4);
 const steerInput = steer * steerLimit;
 const turnAmount = steerInput * 3.0 * (0.5 + 0.5 * Math.min(1, this.speed / 10));
-this.heading += turnAmount * dt;
+this.heading -= turnAmount * dt;
 }
 
 // Apply heading as quaternion
@@ -1121,8 +1121,6 @@ update(physics) {
 const b = physics.chassisBody;
 this.group.position.set(b.position.x, b.position.y, b.position.z);
 const q = new THREE.Quaternion(b.quaternion.x, b.quaternion.y, b.quaternion.z, b.quaternion.w);
-const flip = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI);
-q.multiply(flip);
 this.group.quaternion.copy(q);
 }
 }
