@@ -1,0 +1,36 @@
+import { CONFIG } from './config.js';
+
+export class HUD {
+  constructor() {
+    this.elPosition = document.getElementById('hud-position');
+    this.elLap = document.getElementById('hud-lap');
+    this.elTime = document.getElementById('hud-time');
+    this.elSpeed = document.getElementById('hud-speed');
+    this.elCountdown = document.getElementById('hud-countdown');
+    this.elHud = document.getElementById('hud');
+  }
+
+  show() { this.elHud.style.display = 'block'; }
+  hide() { this.elHud.style.display = 'none'; }
+
+  update(playerKart, raceManager) {
+    this.elPosition.textContent = raceManager.getRankText(playerKart);
+    this.elLap.textContent = `圈 ${Math.min(playerKart.lap + 1, CONFIG.totalLaps)} / ${CONFIG.totalLaps}`;
+    this.elTime.textContent = raceManager.getTimeText(raceManager.raceTime);
+    const speed = Math.round(playerKart.physics.speed * 3.6);
+    this.elSpeed.textContent = `${speed} km/h`;
+  }
+
+  showCountdown(time) {
+    if (time > 0.5) {
+      this.elCountdown.style.display = 'block';
+      this.elCountdown.textContent = Math.ceil(time - 0.5);
+    } else if (time > 0) {
+      this.elCountdown.textContent = 'GO!';
+      this.elCountdown.style.color = '#2ecc71';
+    } else {
+      this.elCountdown.style.display = 'none';
+      this.elCountdown.style.color = '#e94560';
+    }
+  }
+}

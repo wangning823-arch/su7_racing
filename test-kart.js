@@ -1,6 +1,34 @@
 const fs = require('fs');
 
-const html = fs.readFileSync('/home/root1/users/admin/projects/test1/kart-racer.html', 'utf-8');
+const root = '/home/root1/users/admin/projects/test1/';
+
+// Read all source files
+const html = fs.readFileSync(root + 'index.html', 'utf-8');
+
+const jsFiles = [
+  'js/config.js',
+  'js/input.js',
+  'js/track.js',
+  'js/physics.js',
+  'js/kart-renderer.js',
+  'js/kart.js',
+  'js/ai.js',
+  'js/camera.js',
+  'js/race.js',
+  'js/minimap.js',
+  'js/hud.js',
+  'js/particles.js',
+  'js/game.js',
+  'js/main.js'
+];
+
+const jsContents = {};
+let allJs = '';
+for (const f of jsFiles) {
+  const content = fs.readFileSync(root + f, 'utf-8');
+  jsContents[f] = content;
+  allJs += '\n' + content;
+}
 
 let passed = 0, failed = 0;
 function assert(condition, msg) {
@@ -18,7 +46,6 @@ assert(html.includes('<html'), 'Has html tag');
 assert(html.includes('</html>'), 'Has closing html tag');
 assert(html.includes('<head>'), 'Has head tag');
 assert(html.includes('<body>'), 'Has body tag');
-assert(html.includes('</script>'), 'Script tags closed');
 assert(html.includes('charset="UTF-8"'), 'UTF-8 charset');
 
 // ========================================
@@ -32,7 +59,10 @@ assert(html.includes('nipplejs'), 'nipplejs CDN');
 assert(html.includes('importmap'), 'Has importmap');
 assert(html.includes('"three"'), 'Three.js in importmap');
 assert(html.includes('"cannon-es"'), 'cannon-es in importmap');
-assert(html.includes("import * as CANNON from 'cannon-es'"), 'CANNON imported as ES module');
+
+// Check ES module imports in JS files
+assert(allJs.includes("import * as THREE from 'three'"), 'THREE imported as ES module');
+assert(allJs.includes("import * as CANNON from 'cannon-es'"), 'CANNON imported as ES module');
 
 // ========================================
 // 3. DOM Element Tests
@@ -80,7 +110,7 @@ const classes = [
 ];
 
 for (const cls of classes) {
-  assert(html.includes(`class ${cls}`), `Class ${cls} defined`);
+  assert(allJs.includes(`class ${cls}`), `Class ${cls} defined`);
 }
 
 // ========================================
@@ -97,7 +127,7 @@ const configKeys = [
 ];
 
 for (const key of configKeys) {
-  assert(html.includes(key), `CONFIG.${key} defined`);
+  assert(allJs.includes(key), `CONFIG.${key} defined`);
 }
 
 // ========================================
@@ -126,7 +156,7 @@ const threeFeatures = [
 ];
 
 for (const [feature, desc] of threeFeatures) {
-  assert(html.includes(feature), `Three.js: ${desc}`);
+  assert(allJs.includes(feature), `Three.js: ${desc}`);
 }
 
 // ========================================
@@ -150,7 +180,7 @@ const physicsFeatures = [
 ];
 
 for (const [feature, desc] of physicsFeatures) {
-  assert(html.includes(feature), `Physics: ${desc}`);
+  assert(allJs.includes(feature), `Physics: ${desc}`);
 }
 
 // ========================================
@@ -159,46 +189,46 @@ for (const [feature, desc] of physicsFeatures) {
 console.log('\n=== Game Logic ===');
 
 // State machine
-assert(html.includes("'MENU'"), 'State: MENU');
-assert(html.includes("'COUNTDOWN'"), 'State: COUNTDOWN');
-assert(html.includes("'RACING'"), 'State: RACING');
-assert(html.includes("'FINISHED'"), 'State: FINISHED');
+assert(allJs.includes("'MENU'"), 'State: MENU');
+assert(allJs.includes("'COUNTDOWN'"), 'State: COUNTDOWN');
+assert(allJs.includes("'RACING'"), 'State: RACING');
+assert(allJs.includes("'FINISHED'"), 'State: FINISHED');
 
 // Race features
-assert(html.includes('startCountdown'), 'Countdown function');
-assert(html.includes('updateCheckpoints'), 'Checkpoint tracking');
-assert(html.includes('updatePositions'), 'Position ranking');
-assert(html.includes('checkFinish'), 'Finish detection');
-assert(html.includes('totalLaps'), 'Lap counting');
+assert(allJs.includes('startCountdown'), 'Countdown function');
+assert(allJs.includes('updateCheckpoints'), 'Checkpoint tracking');
+assert(allJs.includes('updatePositions'), 'Position ranking');
+assert(allJs.includes('checkFinish'), 'Finish detection');
+assert(allJs.includes('totalLaps'), 'Lap counting');
 
 // AI
-assert(html.includes('pure pursuit') || html.includes('Pure Pursuit') || html.includes('nearestIdx'), 'AI waypoint following');
-assert(html.includes('lookahead'), 'AI lookahead');
-assert(html.includes('curvature'), 'AI curvature detection');
+assert(allJs.includes('pure pursuit') || allJs.includes('Pure Pursuit') || allJs.includes('nearestIdx'), 'AI waypoint following');
+assert(allJs.includes('lookahead'), 'AI lookahead');
+assert(allJs.includes('curvature'), 'AI curvature detection');
 
 // Input
-assert(html.includes('KeyW'), 'Key W input');
-assert(html.includes('KeyA'), 'Key A input');
-assert(html.includes('KeyS'), 'Key S input');
-assert(html.includes('KeyD'), 'Key D input');
-assert(html.includes('ArrowUp'), 'Arrow Up input');
-assert(html.includes('ArrowDown'), 'Arrow Down input');
-assert(html.includes('ArrowLeft'), 'Arrow Left input');
-assert(html.includes('ArrowRight'), 'Arrow Right input');
-assert(html.includes('Space'), 'Space input (drift)');
+assert(allJs.includes('KeyW'), 'Key W input');
+assert(allJs.includes('KeyA'), 'Key A input');
+assert(allJs.includes('KeyS'), 'Key S input');
+assert(allJs.includes('KeyD'), 'Key D input');
+assert(allJs.includes('ArrowUp'), 'Arrow Up input');
+assert(allJs.includes('ArrowDown'), 'Arrow Down input');
+assert(allJs.includes('ArrowLeft'), 'Arrow Left input');
+assert(allJs.includes('ArrowRight'), 'Arrow Right input');
+assert(allJs.includes('Space'), 'Space input (drift)');
 
 // ========================================
 // 10. Track Spline Tests
 // ========================================
 console.log('\n=== Track Spline ===');
 
-// Count control points
-const cpMatch = html.match(/new THREE\.Vector3\(/g);
+// Count control points across all JS files
+const cpMatch = allJs.match(/new THREE\.Vector3\(/g);
 const cpCount = cpMatch ? cpMatch.length : 0;
 assert(cpCount >= 20, `Track has ${cpCount} control points (need >= 20)`);
 
 // Closed loop
-assert(html.includes("CatmullRomCurve3(pts, true") || html.includes("CatmullRomCurve3(pts, true,"), 'Spline is closed loop');
+assert(allJs.includes("CatmullRomCurve3(pts, true") || allJs.includes("CatmullRomCurve3(pts, true,"), 'Spline is closed loop');
 
 // ========================================
 // 11. Kart Setup Tests
@@ -206,28 +236,28 @@ assert(html.includes("CatmullRomCurve3(pts, true") || html.includes("CatmullRomC
 console.log('\n=== Kart Setup ===');
 
 // 6 karts (1 player + 5 AI)
-assert(html.includes('CONFIG.numAI'), 'Uses numAI config');
-assert(html.includes(', true)') || html.includes('isPlayer'), 'Player kart marked');
-assert(html.includes('isPlayer'), 'isPlayer property used');
+assert(allJs.includes('CONFIG.numAI'), 'Uses numAI config');
+assert(allJs.includes(', true)') || allJs.includes('isPlayer'), 'Player kart marked');
+assert(allJs.includes('isPlayer'), 'isPlayer property used');
 
 // Colors
-assert(html.includes('0xe94560'), 'Player color defined');
-assert(html.includes('0x3498db'), 'AI-1 color defined');
+assert(allJs.includes('0xe94560'), 'Player color defined');
+assert(allJs.includes('0x3498db'), 'AI-1 color defined');
 
 // Names
-assert(html.includes("'玩家'"), 'Player name');
-assert(html.includes("'闪电'"), 'AI name');
+assert(allJs.includes("'玩家'"), 'Player name');
+assert(allJs.includes("'闪电'"), 'AI name');
 
 // ========================================
 // 12. Camera System Tests
 // ========================================
 console.log('\n=== Camera ===');
 
-assert(html.includes('cameraDistance'), 'Camera distance config');
-assert(html.includes('cameraHeight'), 'Camera height config');
-assert(html.includes('lerp'), 'Camera smoothing');
-assert(html.includes('fov'), 'FOV adjustment');
-assert(html.includes('updateProjectionMatrix'), 'Projection update');
+assert(allJs.includes('cameraDistance'), 'Camera distance config');
+assert(allJs.includes('cameraHeight'), 'Camera height config');
+assert(allJs.includes('lerp'), 'Camera smoothing');
+assert(allJs.includes('fov'), 'FOV adjustment');
+assert(allJs.includes('updateProjectionMatrix'), 'Projection update');
 
 // ========================================
 // 13. UI Tests
@@ -240,14 +270,14 @@ assert(html.includes('hud-lap'), 'Lap display');
 assert(html.includes('hud-time'), 'Time display');
 assert(html.includes('hud-speed'), 'Speed display');
 assert(html.includes('hud-countdown'), 'Countdown display');
-assert(html.includes('km/h'), 'Speed unit');
+assert(allJs.includes('km/h'), 'Speed unit');
 
 // Results
 assert(html.includes('results-table'), 'Results table');
-assert(html.includes('名次'), 'Rank column');
-assert(html.includes('选手'), 'Name column');
-assert(html.includes('时间'), 'Time column');
-assert(html.includes('未完赛'), 'DNF text');
+assert(allJs.includes('名次'), 'Rank column');
+assert(allJs.includes('选手'), 'Name column');
+assert(allJs.includes('时间'), 'Time column');
+assert(allJs.includes('未完赛'), 'DNF text');
 
 // MiniMap
 assert(html.includes('minimap'), 'Minimap canvas');
@@ -258,9 +288,9 @@ assert(html.includes('160'), 'Minimap size');
 // ========================================
 console.log('\n=== Particles ===');
 
-assert(html.includes('emitDriftSmoke'), 'Drift smoke function');
-assert(html.includes('ParticleSystem'), 'ParticleSystem class');
-assert(html.includes('SphereGeometry'), 'Smoke geometry');
+assert(allJs.includes('emitDriftSmoke'), 'Drift smoke function');
+assert(allJs.includes('ParticleSystem'), 'ParticleSystem class');
+assert(allJs.includes('SphereGeometry'), 'Smoke geometry');
 
 // ========================================
 // 15. Event Handler Tests
@@ -269,103 +299,137 @@ console.log('\n=== Events ===');
 
 assert(html.includes('startBtn'), 'Start button handler');
 assert(html.includes('restartBtn'), 'Restart button handler');
-assert(html.includes('resize'), 'Window resize handler');
-assert(html.includes('keydown'), 'Key down handler');
-assert(html.includes('keyup'), 'Key up handler');
-assert(html.includes('touchstart'), 'Touch start handler');
-assert(html.includes('touchend'), 'Touch end handler');
-assert(html.includes('touchcancel'), 'Touch cancel handler');
+assert(allJs.includes('resize'), 'Window resize handler');
+assert(allJs.includes('keydown'), 'Key down handler');
+assert(allJs.includes('keyup'), 'Key up handler');
+assert(allJs.includes('touchstart'), 'Touch start handler');
+assert(allJs.includes('touchend'), 'Touch end handler');
+assert(allJs.includes('touchcancel'), 'Touch cancel handler');
 
 // ========================================
 // 16. Performance Tests
 // ========================================
 console.log('\n=== Performance ===');
 
-assert(html.includes('setPixelRatio'), 'Pixel ratio limit');
-assert(html.includes('antialias'), 'Antialiasing');
-assert(html.includes('shadowMap'), 'Shadow mapping');
-assert(html.includes('receiveShadow'), 'Receive shadows');
-assert(html.includes('castShadow'), 'Cast shadows');
+assert(allJs.includes('setPixelRatio'), 'Pixel ratio limit');
+assert(allJs.includes('antialias'), 'Antialiasing');
+assert(allJs.includes('shadowMap'), 'Shadow mapping');
+assert(allJs.includes('receiveShadow'), 'Receive shadows');
+assert(allJs.includes('castShadow'), 'Cast shadows');
 
 // ========================================
 // 17. Game Loop Tests
 // ========================================
 console.log('\n=== Game Loop ===');
 
-assert(html.includes('requestAnimationFrame'), 'Animation loop');
-assert(html.includes('getDelta'), 'Delta time');
-assert(html.includes('accumulator'), 'Fixed timestep accumulator');
-assert(html.includes('fixedDt'), 'Fixed dt value');
-assert(html.includes('physicsWorld.step'), 'Physics step');
+assert(allJs.includes('requestAnimationFrame'), 'Animation loop');
+assert(allJs.includes('getDelta'), 'Delta time');
+assert(allJs.includes('accumulator'), 'Fixed timestep accumulator');
+assert(allJs.includes('fixedDt'), 'Fixed dt value');
+assert(allJs.includes('physicsWorld.step'), 'Physics step');
 
 // ========================================
 // 18. Respawn System Tests
 // ========================================
 console.log('\n=== Respawn ===');
 
-assert(html.includes('position.y < -5'), 'Fall detection');
-assert(html.includes('currentSplineT'), 'Spline position tracking');
-assert(html.includes('physics.reset'), 'Physics reset');
+assert(allJs.includes('position.y < -5'), 'Fall detection');
+assert(allJs.includes('currentSplineT'), 'Spline position tracking');
+assert(allJs.includes('physics.reset'), 'Physics reset');
 
 // ========================================
 // 19. Start Positions Tests
 // ========================================
 console.log('\n=== Start Positions ===');
 
-assert(html.includes('getStartPositions'), 'Start positions function');
-assert(html.includes('tangent'), 'Tangent direction');
-assert(html.includes('crossVectors'), 'Right vector calculation');
+assert(allJs.includes('getStartPositions'), 'Start positions function');
+assert(allJs.includes('tangent'), 'Tangent direction');
+assert(allJs.includes('crossVectors'), 'Right vector calculation');
 
 // ========================================
 // 20. Code Quality Tests
 // ========================================
 console.log('\n=== Code Quality ===');
 
-// Check for common JS issues
-const scriptMatch = html.match(/<script type="module">([\s\S]*?)<\/script>/);
-if (scriptMatch) {
-  const code = scriptMatch[1];
-
-  // No undefined references (basic check)
-  assert(!code.includes('undefined.'), 'No undefined access');
-
-  // Proper error handling patterns
-  assert(code.includes('Math.max') && code.includes('Math.min'), 'Clamping values');
-
-  // Consistent naming
-  assert(code.includes('this.scene'), 'this.scene used');
-  assert(code.includes('this.camera'), 'this.camera used');
-  assert(code.includes('this.physicsWorld'), 'this.physicsWorld used');
-}
+// Check for common JS issues across all files
+assert(!allJs.includes('undefined.'), 'No undefined access');
+assert(allJs.includes('Math.max') && allJs.includes('Math.min'), 'Clamping values');
+assert(allJs.includes('this.scene'), 'this.scene used');
+assert(allJs.includes('this.camera'), 'this.camera used');
+assert(allJs.includes('this.physicsWorld'), 'this.physicsWorld used');
 
 // ========================================
-// 20. Syntax Check (via eval-like)
+// 21. Module Structure Tests
+// ========================================
+console.log('\n=== Module Structure ===');
+
+// Check that each module exports its main class
+assert(jsContents['js/config.js'].includes('export const CONFIG'), 'config.js exports CONFIG');
+assert(jsContents['js/input.js'].includes('export class InputManager'), 'input.js exports InputManager');
+assert(jsContents['js/track.js'].includes('export class TrackBuilder'), 'track.js exports TrackBuilder');
+assert(jsContents['js/physics.js'].includes('export class KartPhysics'), 'physics.js exports KartPhysics');
+assert(jsContents['js/kart-renderer.js'].includes('export class KartRenderer'), 'kart-renderer.js exports KartRenderer');
+assert(jsContents['js/kart.js'].includes('export class Kart'), 'kart.js exports Kart');
+assert(jsContents['js/ai.js'].includes('export class AIController'), 'ai.js exports AIController');
+assert(jsContents['js/camera.js'].includes('export class CameraController'), 'camera.js exports CameraController');
+assert(jsContents['js/race.js'].includes('export class RaceManager'), 'race.js exports RaceManager');
+assert(jsContents['js/minimap.js'].includes('export class MiniMap'), 'minimap.js exports MiniMap');
+assert(jsContents['js/hud.js'].includes('export class HUD'), 'hud.js exports HUD');
+assert(jsContents['js/particles.js'].includes('export class ParticleSystem'), 'particles.js exports ParticleSystem');
+assert(jsContents['js/game.js'].includes('export class Game'), 'game.js exports Game');
+
+// Check that game.js imports all dependencies
+assert(jsContents['js/game.js'].includes("import { InputManager }"), 'game.js imports InputManager');
+assert(jsContents['js/game.js'].includes("import { TrackBuilder }"), 'game.js imports TrackBuilder');
+assert(jsContents['js/game.js'].includes("import { Kart }"), 'game.js imports Kart');
+assert(jsContents['js/game.js'].includes("import { AIController }"), 'game.js imports AIController');
+assert(jsContents['js/game.js'].includes("import { CameraController }"), 'game.js imports CameraController');
+assert(jsContents['js/game.js'].includes("import { RaceManager }"), 'game.js imports RaceManager');
+assert(jsContents['js/game.js'].includes("import { MiniMap }"), 'game.js imports MiniMap');
+assert(jsContents['js/game.js'].includes("import { HUD }"), 'game.js imports HUD');
+assert(jsContents['js/game.js'].includes("import { ParticleSystem }"), 'game.js imports ParticleSystem');
+
+// Check main.js entry point
+assert(jsContents['js/main.js'].includes("import { Game }"), 'main.js imports Game');
+assert(jsContents['js/main.js'].includes('new Game()'), 'main.js instantiates Game');
+assert(jsContents['js/main.js'].includes('game.init()'), 'main.js calls init()');
+
+// Check HTML loads main.js as module
+assert(html.includes('type="module" src="js/main.js"'), 'HTML loads main.js as module');
+
+// ========================================
+// 22. Syntax Check (via eval-like)
 // ========================================
 console.log('\n=== Syntax Check ===');
 
 try {
-  const moduleScript = html.match(/<script type="module">([\s\S]*?)<\/script>/);
-  if (moduleScript) {
-    const code = moduleScript[1];
-    // Replace imports with stubs
-    const stubCode = code
-      .replace(/import \* as THREE from 'three';/g, 'const THREE = {};')
-      .replace(/import \* as CANNON from 'cannon-es';/g, 'const CANNON = {};');
-    new Function(stubCode);
-    assert(true, 'JavaScript syntax is valid');
+  // Check each JS file for syntax validity
+  for (const [file, content] of Object.entries(jsContents)) {
+    try {
+      // Replace imports/exports with stubs for syntax check
+      const stubCode = content
+        .replace(/import\s+\{[^}]+\}\s+from\s+'[^']+';/g, '')
+        .replace(/import\s+\*\s+as\s+\w+\s+from\s+'[^']+';/g, '')
+        .replace(/export\s+/g, '');
+      new Function(stubCode);
+      assert(true, `${file} syntax valid`);
+    } catch(e) {
+      assert(false, `Syntax error in ${file}: ${e.message}`);
+    }
   }
 } catch(e) {
-  assert(false, `Syntax error: ${e.message}`);
+  assert(false, `Syntax check failed: ${e.message}`);
 }
 
 // ========================================
-// 21. Track Intersection Test
+// 23. Track Intersection Test
 // ========================================
 console.log('\n=== Track Intersection Check ===');
 
 {
-  // Extract control points from HTML
-  const cpMatches = [...html.matchAll(/new THREE\.Vector3\(([^)]+)\)/g)];
+  // Extract control points from track.js
+  const trackCode = jsContents['js/track.js'];
+  const cpMatches = [...trackCode.matchAll(/new THREE\.Vector3\(([^)]+)\)/g)];
   const trackPts = cpMatches.map(m => {
     const parts = m[1].split(',').map(s => parseFloat(s.trim()));
     return [parts[0], parts[2]]; // x, z (skip y)

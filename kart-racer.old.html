@@ -100,7 +100,7 @@ trackSegments: 1000,
 totalLaps: 3,
 numAI: 5,
 aiSpeeds: [1.0, 0.95, 0.90, 0.85, 0.80],
-aiLookaheads: [18, 16, 14, 12, 10],
+aiLookaheads: [6, 5, 5, 4, 4],
 cameraDistance: 8,
 cameraHeight: 3.5,
 colors: [0xe94560, 0x3498db, 0x2ecc71, 0xf39c12, 0x9b59b6, 0x1abc9c],
@@ -603,10 +603,9 @@ const tangent = this.spline.getTangentAt(0);
 const right = new THREE.Vector3().crossVectors(tangent, new THREE.Vector3(0, 1, 0)).normalize();
 
 for (let i = 0; i < 6; i++) {
-const row = Math.floor(i / 2);
 const col = (i % 2) === 0 ? -1 : 1;
-const offset = right.clone().multiplyScalar(col * 2.5);
-const back = tangent.clone().multiplyScalar(-row * 4);
+const offset = right.clone().multiplyScalar(col * 1.8);
+const back = tangent.clone().multiplyScalar(-i * 5);
 const pos = startT.clone().add(offset).add(back);
 positions.push({ pos, angle: Math.atan2(tangent.x, tangent.z) });
 }
@@ -651,7 +650,7 @@ const speedRatio = this.speed / CONFIG.maxSpeed;
 const steerLimit = CONFIG.steerAngle * (1 - speedRatio * 0.4);
 const steerInput = steer * steerLimit;
 const turnAmount = steerInput * 3.0 * (0.5 + 0.5 * Math.min(1, this.speed / 10));
-this.heading -= turnAmount * dt;
+this.heading += turnAmount * dt;
 }
 
 // Apply heading as quaternion
@@ -1176,8 +1175,8 @@ const speed = Math.sqrt(vel.x * vel.x + vel.y * vel.y + vel.z * vel.z);
 // Find nearest waypoint
 let minDist = Infinity;
 const wps = this.track.waypoints;
-const searchStart = (this.nearestIdx - 15 + wps.length) % wps.length;
-for (let j = 0; j < 30; j++) {
+const searchStart = (this.nearestIdx - 25 + wps.length) % wps.length;
+for (let j = 0; j < 50; j++) {
 const idx = (searchStart + j) % wps.length;
 const wp = wps[idx];
 const d = Math.sqrt((pos.x - wp.pos.x) ** 2 + (pos.z - wp.pos.z) ** 2);
@@ -1188,29 +1187,26 @@ if (d < minDist) { minDist = d; this.nearestIdx = idx; }
 const lookIdx = (this.nearestIdx + this.lookahead) % wps.length;
 const target = wps[lookIdx].pos;
 
-// Calculate steering
+// Steering via cross product — heading-convention independent
 const dx = target.x - pos.x;
 const dz = target.z - pos.z;
-const dist = Math.sqrt(dx * dx + dz * dz);
+const fwdX = Math.sin(kart.physics.heading);
+const fwdZ = Math.cos(kart.physics.heading);
+const cross = fwdX * dz - fwdZ * dx;
+const dot = fwdX * dx + fwdZ * dz;
+const errAngle = Math.atan2(cross, dot);
+const steer = Math.max(-1, Math.min(1, errAngle * 1.0));
 
-const chassis = kart.physics.chassisBody;
-const angle = Math.atan2(dx, dz);
-const kartAngle = kart.physics.heading;
-let diff = angle - kartAngle;
-while (diff > Math.PI) diff -= Math.PI * 2;
-while (diff < -Math.PI) diff += Math.PI * 2;
-
-const steer = Math.max(-1, Math.min(1, diff * 3));
-
-// Throttle/brake - use nearby waypoint curvature, not distant lookahead
+// Throttle/brake — use nearby waypoint curvature
 const nearIdx = (this.nearestIdx + 3) % wps.length;
 const nearPt = wps[nearIdx].pos;
-const nearAngle = Math.atan2(nearPt.x - pos.x, nearPt.z - pos.z);
-let nearDiff = nearAngle - kartAngle;
-while (nearDiff > Math.PI) nearDiff -= Math.PI * 2;
-while (nearDiff < -Math.PI) nearDiff += Math.PI * 2;
-const nearDist = Math.sqrt((nearPt.x - pos.x) ** 2 + (nearPt.z - pos.z) ** 2);
-const curvature = Math.abs(nearDiff) / (nearDist + 1) * 100;
+const ndx = nearPt.x - pos.x;
+const ndz = nearPt.z - pos.z;
+const nCross = fwdX * ndz - fwdZ * ndx;
+const nDot = fwdX * ndx + fwdZ * ndz;
+const nearErrAngle = Math.abs(Math.atan2(nCross, nDot));
+const nearDist = Math.sqrt(ndx * ndx + ndz * ndz);
+const curvature = nearErrAngle / (nearDist + 1) * 100;
 let throttle = this.speedCoeff;
 let brake = 0;
 
@@ -1224,7 +1220,6 @@ throttle = 0.1;
 }
 
 // Rubber band
-const playerKart = kart;
 if (kart.position > 3) throttle *= 1.1;
 if (kart.position <= 1) throttle *= 0.95;
 
@@ -1667,7 +1662,8 @@ this.raceManager.update(dt);
 // Handle input based on race state
 if (this.raceManager.state === 'RACING') {
 // Cache input once per frame
-const playerInput = this.input.getInput();
+const rawInput = this.input.getInput();
+const playerInput = { ...rawInput, steer: -rawInput.steer };
 const aiInputs = this.aiControllers.map((ai, i) => ai.getInput(this.karts[i + 1]));
 
 // Physics loop: apply forces then step each substep

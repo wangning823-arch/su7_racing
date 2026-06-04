@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>3D卡丁车赛车</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:100%;height:100%;overflow:hidden;background:#000;font-family:'Segoe UI',Arial,sans-serif}
+canvas{display:block}
+#menu{position:absolute;top:0;left:0;width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;background:linear-gradient(135deg,#1a1a2e,#16213e,#0f3460);z-index:100}
+#menu h1{font-size:3em;color:#e94560;text-shadow:0 0 20px rgba(233,69,96,0.5);margin-bottom:10px}
+#menu h2{font-size:1.2em;color:#aaa;margin-bottom:40px}
+#menu button{font-size:1.5em;padding:15px 60px;border:2px solid #e94560;background:transparent;color:#e94560;cursor:pointer;border-radius:8px;transition:all 0.3s;margin:10px;touch-action:manipulation;-webkit-tap-highlight-color:transparent}
+#menu button:hover,#menu button:active{background:#e94560;color:#fff}
+#hud{position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:10;display:none}
+#hud-position{position:absolute;top:20px;left:20px;font-size:2em;color:#fff;text-shadow:2px 2px 4px #000}
+#hud-lap{position:absolute;top:60px;left:20px;font-size:1.2em;color:#fff;text-shadow:2px 2px 4px #000}
+#hud-time{position:absolute;top:20px;right:20px;font-size:1.5em;color:#fff;text-shadow:2px 2px 4px #000}
+#hud-speed{position:absolute;bottom:40px;left:50%;transform:translateX(-50%);font-size:2.5em;color:#0f0;text-shadow:0 0 10px rgba(0,255,0,0.5);font-weight:bold}
+#hud-countdown{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font-size:8em;color:#e94560;text-shadow:0 0 30px rgba(233,69,96,0.8);display:none}
+#minimap{position:absolute;bottom:20px;right:20px;border:2px solid rgba(255,255,255,0.3);border-radius:8px}
+#results{position:absolute;top:0;left:0;width:100%;height:100%;display:none;flex-direction:column;align-items:center;justify-content:center;background:rgba(0,0,0,0.85);z-index:100}
+#results h1{font-size:3em;color:#e94560;margin-bottom:20px}
+#results table{border-collapse:collapse;margin:20px}
+#results td,#results th{padding:10px 30px;color:#fff;font-size:1.2em;text-align:center;border-bottom:1px solid #333}
+#results th{color:#e94560}
+#results button{font-size:1.3em;padding:12px 50px;border:2px solid #e94560;background:transparent;color:#e94560;cursor:pointer;border-radius:8px;margin-top:30px;transition:all 0.3s;touch-action:manipulation;-webkit-tap-highlight-color:transparent}
+#results button:hover,#results button:active{background:#e94560;color:#fff}
+#touch-controls{position:absolute;bottom:0;left:0;width:100%;height:50%;pointer-events:none;z-index:15;display:none}
+#joystick-zone{position:absolute;bottom:20px;left:20px;width:180px;height:180px;pointer-events:auto}
+.touch-btn{pointer-events:auto;touch-action:none;display:flex;align-items:center;justify-content:center;font-weight:bold;user-select:none;-webkit-user-select:none}
+#throttle-btn{position:absolute;bottom:100px;right:30px;width:90px;height:90px;border-radius:50%;background:rgba(46,204,113,0.6);border:3px solid #2ecc71;color:#fff;font-size:0.9em}
+#throttle-btn:active,#throttle-btn.active{background:rgba(46,204,113,0.9)}
+#brake-btn{position:absolute;bottom:20px;right:140px;width:80px;height:80px;border-radius:50%;background:rgba(52,152,219,0.6);border:3px solid #3498db;color:#fff;font-size:0.8em}
+#brake-btn:active,#brake-btn.active{background:rgba(52,152,219,0.9)}
+#drift-btn{position:absolute;bottom:20px;right:30px;width:80px;height:80px;border-radius:50%;background:rgba(233,69,96,0.6);border:3px solid #e94560;color:#fff;font-size:0.8em}
+#drift-btn:active,#drift-btn.active{background:rgba(233,69,96,0.9)}
+</style>
+</head>
+<body>
+
+<div id="menu">
+<h1>3D卡丁车赛车</h1>
+<h2>Kart Racing 3D</h2>
+<button id="startBtn">START</button>
+</div>
+
+<div id="hud">
+<div id="hud-position">#1 / 6</div>
+<div id="hud-lap">圈 1 / 3</div>
+<div id="hud-time">00:00.00</div>
+<div id="hud-speed">0 km/h</div>
+<div id="hud-countdown">3</div>
+<canvas id="minimap" width="160" height="160"></canvas>
+</div>
+
+<div id="results">
+<h1>比赛结束!</h1>
+<table id="results-table"></table>
+<button id="restartBtn">再来一次</button>
+</div>
+
+<div id="touch-controls">
+<div id="joystick-zone"></div>
+<div id="throttle-btn" class="touch-btn">油门</div>
+<div id="brake-btn" class="touch-btn">刹车</div>
+<div id="drift-btn" class="touch-btn">漂移</div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/nipplejs@0.10.2/dist/nipplejs.min.js"></script>
+
+<script type="importmap">
+{
+"imports": {
+"three": "https://cdn.jsdelivr.net/npm/three@0.172.0/build/three.module.js",
+"three/addons/": "https://cdn.jsdelivr.net/npm/three@0.172.0/examples/jsm/",
+"cannon-es": "https://esm.sh/cannon-es@0.20.0"
+}
+}
+</script>
+
+<script type="module" src="js/main.js"></script>
+</body>
+</html>
