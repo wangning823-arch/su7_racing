@@ -67,6 +67,7 @@ export class TrackBuilder {
     this.generateWaypoints();
     this.generateCheckpoints();
     this.buildStartLine();
+    this.buildArrows();
     this.buildScenery();
   }
 
@@ -319,6 +320,64 @@ export class TrackBuilder {
       flag.position.set(p.x + offset.x, p.y + 3.6, p.z + offset.z);
       flag.rotation.y = angle;
       this.scene.add(flag);
+    }
+  }
+
+  buildArrows() {
+    // Classic filled arrow in XZ plane, pointing +Z
+    const headW = 0.8;  // head half width
+    const headLen = 0.7; // head length
+    const stemW = 0.2;   // stem half width
+    const stemLen = 1.3; // stem length
+    const tipZ = headLen;
+    const baseZ = 0;
+    const tailZ = -stemLen;
+
+    const verts = [
+      0,          0, tipZ,       // 0: tip
+      -headW,     0, baseZ,     // 1: left head
+      headW,      0, baseZ,     // 2: right head
+      -stemW,     0, baseZ,     // 3: left stem start
+      stemW,      0, baseZ,     // 4: right stem start
+      -stemW,     0, tailZ,     // 5: left tail
+      stemW,      0, tailZ,     // 6: right tail
+    ];
+
+    const indices = [
+      // Head: two triangles
+      0, 1, 2,
+      // Head-to-stem transition: fill corners between head and stem
+      1, 3, 2,
+      3, 4, 2,
+      // Stem: two triangles
+      3, 5, 6,
+      3, 6, 4,
+    ];
+
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(verts, 3));
+    geo.setIndex(indices);
+    geo.computeVertexNormals();
+
+    const mat = new THREE.MeshStandardMaterial({
+      color: 0xffffff,
+      roughness: 0.5,
+      transparent: true,
+      opacity: 0.4,
+      side: THREE.DoubleSide
+    });
+
+    const count = 40;
+    for (let i = 0; i < count; i++) {
+      const t = i / count;
+      const p = this.spline.getPointAt(t);
+      const tangent = this.spline.getTangentAt(t);
+      const angle = Math.atan2(tangent.x, tangent.z);
+
+      const arrow = new THREE.Mesh(geo, mat);
+      arrow.rotation.y = angle;
+      arrow.position.set(p.x, p.y + 0.1, p.z);
+      this.scene.add(arrow);
     }
   }
 
