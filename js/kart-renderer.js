@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { CONFIG } from './config.js';
+import { CONFIG } from './config.js?v=2';
 
 export class KartRenderer {
   constructor(scene, color) {

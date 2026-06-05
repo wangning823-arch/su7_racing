@@ -204,7 +204,7 @@ assert(allJs.includes('totalLaps'), 'Lap counting');
 // AI
 assert(allJs.includes('pure pursuit') || allJs.includes('Pure Pursuit') || allJs.includes('nearestIdx'), 'AI waypoint following');
 assert(allJs.includes('lookahead'), 'AI lookahead');
-assert(allJs.includes('curvature'), 'AI curvature detection');
+assert(allJs.includes('errAngle'), 'AI steering error angle');
 
 // Input
 assert(allJs.includes('KeyW'), 'Key W input');
@@ -395,7 +395,7 @@ assert(jsContents['js/main.js'].includes('new Game()'), 'main.js instantiates Ga
 assert(jsContents['js/main.js'].includes('game.init()'), 'main.js calls init()');
 
 // Check HTML loads main.js as module
-assert(html.includes('type="module" src="js/main.js"'), 'HTML loads main.js as module');
+assert(html.includes('type="module" src="js/main.js'), 'HTML loads main.js as module');
 
 // ========================================
 // 22. Syntax Check (via eval-like)

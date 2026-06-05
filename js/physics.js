@@ -1,5 +1,5 @@
 import * as CANNON from 'cannon-es';
-import { CONFIG } from './config.js';
+import { CONFIG } from './config.js?v=2';
 
 export class KartPhysics {
   constructor(world, startPos, startAngle, track, mass = CONFIG.kartMass) {
@@ -32,9 +32,9 @@ export class KartPhysics {
     // Steering
     if (this.speed > 0.5) {
       const speedRatio = this.speed / CONFIG.maxSpeed;
-      const steerLimit = CONFIG.steerAngle * (1 - speedRatio * 0.4);
+      const steerLimit = CONFIG.steerAngle * (1 - speedRatio * 0.3);
       const steerInput = steer * steerLimit;
-      const turnAmount = steerInput * 3.0 * (0.5 + 0.5 * Math.min(1, this.speed / 10));
+      const turnAmount = steerInput * 5.0 * Math.min(1, this.speed / 8);
       this.heading += turnAmount * dt;
     }
 
@@ -63,16 +63,24 @@ export class KartPhysics {
       vel.z -= (vel.z / vLen) * brakeDecel * dt;
     }
 
-    // Lateral friction: remove sideways velocity
-    if (this.speed > 1) {
-      const dot = vel.x * fwdX + vel.z * fwdZ;
-      const projX = fwdX * dot;
-      const projZ = fwdZ * dot;
+    // Lateral friction: remove sideways velocity + prevent backward motion
+    if (this.speed > 0.5) {
+      const fwdDot = vel.x * fwdX + vel.z * fwdZ;
+      const projX = fwdX * fwdDot;
+      const projZ = fwdZ * fwdDot;
       const sideX = vel.x - projX;
       const sideZ = vel.z - projZ;
       const keep = this.isDrifting ? 0.95 : 0.1;
-      vel.x = projX + sideX * keep;
-      vel.z = projZ + sideZ * keep;
+
+      if (fwdDot >= 0) {
+        // Moving forward: keep forward + small lateral
+        vel.x = projX + sideX * keep;
+        vel.z = projZ + sideZ * keep;
+      } else {
+        // Moving backward: zero out backward component (prevent reverse)
+        vel.x = sideX * keep;
+        vel.z = sideZ * keep;
+      }
     }
 
     this.isDrifting = drift && this.speed > 8;

@@ -1,69 +1,103 @@
-import { CONFIG } from './config.js';
+import { CONFIG } from './config.js?v=2';
 
 export class AIController {
   constructor(difficulty, track) {
     this.track = track;
     this.speedCoeff = CONFIG.aiSpeeds[difficulty];
     this.lookahead = CONFIG.aiLookaheads[difficulty];
-    this.nearestIdx = 0;
     this.difficulty = difficulty;
+    this.frameCount = 0;
+    this.splineT = 0;
+  }
+
+  initPosition(pos) {
+    // Find closest spline parameter by brute force
+    const sp = this.track.spline;
+    let bestT = 0;
+    let bestDist = Infinity;
+    for (let t = 0; t < 1; t += 0.005) {
+      const p = sp.getPointAt(t);
+      const d = (pos.x - p.x) ** 2 + (pos.z - p.z) ** 2;
+      if (d < bestDist) { bestDist = d; bestT = t; }
+    }
+    // Refine
+    const step = 0.005;
+    for (let t = Math.max(0, bestT - step); t <= Math.min(1, bestT + step); t += 0.0005) {
+      const p = sp.getPointAt(t);
+      const d = (pos.x - p.x) ** 2 + (pos.z - p.z) ** 2;
+      if (d < bestDist) { bestDist = d; bestT = t; }
+    }
+    this.splineT = bestT;
+    this.frameCount = 0;
   }
 
   getInput(kart) {
     const pos = kart.physics.chassisBody.position;
-    const vel = kart.physics.chassisBody.velocity;
-    const speed = Math.sqrt(vel.x * vel.x + vel.y * vel.y + vel.z * vel.z);
+    const speed = Math.sqrt(
+      kart.physics.chassisBody.velocity.x ** 2 +
+      kart.physics.chassisBody.velocity.z ** 2
+    );
+    const heading = kart.physics.heading;
+    const hfwdX = Math.sin(heading);
+    const hfwdZ = Math.cos(heading);
+    const sp = this.track.spline;
 
-    // Find nearest waypoint
-    let minDist = Infinity;
-    const wps = this.track.waypoints;
-    const searchStart = (this.nearestIdx - 25 + wps.length) % wps.length;
-    for (let j = 0; j < 50; j++) {
-      const idx = (searchStart + j) % wps.length;
-      const wp = wps[idx];
-      const d = Math.sqrt((pos.x - wp.pos.x) ** 2 + (pos.z - wp.pos.z) ** 2);
-      if (d < minDist) { minDist = d; this.nearestIdx = idx; }
+    this.frameCount++;
+
+    // Step 1: Update splineT — find closest point on spline
+    let bestT = this.splineT;
+    let bestDist = Infinity;
+    // Search near current t (small window for efficiency)
+    for (let dt = -0.02; dt <= 0.02; dt += 0.001) {
+      let t = (this.splineT + dt + 1) % 1;
+      const p = sp.getPointAt(t);
+      const d = (pos.x - p.x) ** 2 + (pos.z - p.z) ** 2;
+      if (d < bestDist) { bestDist = d; bestT = t; }
     }
+    this.splineT = bestT;
 
-    // Look ahead
-    const lookIdx = (this.nearestIdx + this.lookahead) % wps.length;
-    const target = wps[lookIdx].pos;
+    // Step 2: Get track tangent at current position (forward direction)
+    const tangent = sp.getTangentAt(this.splineT);
+    const tFwdX = tangent.x;
+    const tFwdZ = tangent.z;
 
-    // Steering via cross product — heading-convention independent
+    // Step 3: Target = a point ahead on the spline
+    // Look ahead proportional to speed
+    const lookAheadT = Math.max(0.01, Math.min(0.05, speed * 0.001 + 0.01));
+    const targetT = (this.splineT + lookAheadT) % 1;
+    const target = sp.getPointAt(targetT);
+
+    // Step 4: Steering — align kart heading with track tangent
+    // Use cross product to determine turn direction
     const dx = target.x - pos.x;
     const dz = target.z - pos.z;
-    const fwdX = Math.sin(kart.physics.heading);
-    const fwdZ = Math.cos(kart.physics.heading);
-    const cross = fwdX * dz - fwdZ * dx;
-    const dot = fwdX * dx + fwdZ * dz;
+    const cross = hfwdZ * dx - hfwdX * dz;
+    const dot = hfwdX * dx + hfwdZ * dz;
     const errAngle = Math.atan2(cross, dot);
-    const steer = Math.max(-1, Math.min(1, errAngle * 1.0));
+    const steer = Math.max(-1, Math.min(1, errAngle));
 
-    // Throttle/brake — use nearby waypoint curvature
-    const nearIdx = (this.nearestIdx + 3) % wps.length;
-    const nearPt = wps[nearIdx].pos;
-    const ndx = nearPt.x - pos.x;
-    const ndz = nearPt.z - pos.z;
-    const nCross = fwdX * ndz - fwdZ * ndx;
-    const nDot = fwdX * ndx + fwdZ * ndz;
-    const nearErrAngle = Math.abs(Math.atan2(nCross, nDot));
-    const nearDist = Math.sqrt(ndx * ndx + ndz * ndz);
-    const curvature = nearErrAngle / (nearDist + 1) * 100;
+    // Throttle / brake
     let throttle = this.speedCoeff;
     let brake = 0;
 
-    if (curvature > 3 && speed > 15) {
-      brake = 0.5;
-      throttle = 0.3;
-    }
-    if (curvature > 6) {
-      brake = 0.8;
-      throttle = 0.1;
+    // Startup: first 40 frames, gentle steering
+    if (this.frameCount < 40) {
+      const startupSteer = Math.max(-0.3, Math.min(0.3, errAngle * 0.3));
+      return {
+        throttle: Math.max(0, Math.min(1, throttle)),
+        brake: 0,
+        steer: startupSteer,
+        drift: false
+      };
     }
 
-    // Rubber band
-    if (kart.position > 3) throttle *= 1.1;
-    if (kart.position <= 1) throttle *= 0.95;
+    if (Math.abs(errAngle) > 0.4) {
+      throttle *= 0.5;
+    }
+    if (Math.abs(errAngle) > 0.8) {
+      brake = 0.5;
+      throttle = 0.1;
+    }
 
     return {
       throttle: Math.max(0, Math.min(1, throttle)),

@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { CONFIG } from './config.js';
+import { CONFIG } from './config.js?v=2';
 
 export class TrackBuilder {
   constructor(scene, physicsWorld) {
@@ -64,10 +64,10 @@ export class TrackBuilder {
     this.buildBarriers();
     this.buildGround();
     this.buildTrees();
-    this.buildStartLine();
-    this.buildScenery();
     this.generateWaypoints();
     this.generateCheckpoints();
+    this.buildStartLine();
+    this.buildScenery();
   }
 
   buildRoad() {
@@ -278,7 +278,13 @@ export class TrackBuilder {
 
   buildStartLine() {
     const p = this.spline.getPointAt(0);
-    const t = this.spline.getTangentAt(0);
+    // Use waypoint direction instead of spline tangent (more reliable)
+    const wp0 = this.waypoints[0].pos;
+    const wp1 = this.waypoints[1].pos;
+    const fwdDx = wp1.x - wp0.x;
+    const fwdDz = wp1.z - wp0.z;
+    const fwdLen = Math.sqrt(fwdDx * fwdDx + fwdDz * fwdDz);
+    const t = new THREE.Vector3(fwdDx / fwdLen, 0, fwdDz / fwdLen);
     const angle = Math.atan2(t.x, t.z);
     const right = new THREE.Vector3(t.z, 0, -t.x).normalize();
 
@@ -420,15 +426,17 @@ export class TrackBuilder {
   getStartPositions() {
     const positions = [];
     const startT = this.spline.getPointAt(0);
-    const tangent = this.spline.getTangentAt(0);
+    // Use spline tangent at t=0 for consistent starting direction
+    const tangent = this.spline.getTangentAt(0).normalize();
     const right = new THREE.Vector3().crossVectors(tangent, new THREE.Vector3(0, 1, 0)).normalize();
+    const angle = Math.atan2(tangent.x, tangent.z);
 
     for (let i = 0; i < 6; i++) {
       const col = (i % 2) === 0 ? -1 : 1;
       const offset = right.clone().multiplyScalar(col * 1.8);
       const back = tangent.clone().multiplyScalar(-i * 5);
       const pos = startT.clone().add(offset).add(back);
-      positions.push({ pos, angle: Math.atan2(tangent.x, tangent.z) });
+      positions.push({ pos, angle });
     }
     return positions;
   }

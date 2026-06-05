@@ -1,15 +1,15 @@
 import * as THREE from 'three';
 import * as CANNON from 'cannon-es';
-import { CONFIG } from './config.js';
-import { InputManager } from './input.js';
-import { TrackBuilder } from './track.js';
-import { Kart } from './kart.js';
-import { AIController } from './ai.js';
-import { CameraController } from './camera.js';
-import { RaceManager } from './race.js';
-import { MiniMap } from './minimap.js';
-import { HUD } from './hud.js';
-import { ParticleSystem } from './particles.js';
+import { CONFIG } from './config.js?v=2';
+import { InputManager } from './input.js?v=2';
+import { TrackBuilder } from './track.js?v=2';
+import { Kart } from './kart.js?v=2';
+import { AIController } from './ai.js?v=2';
+import { CameraController } from './camera.js?v=2';
+import { RaceManager } from './race.js?v=2';
+import { MiniMap } from './minimap.js?v=2';
+import { HUD } from './hud.js?v=2';
+import { ParticleSystem } from './particles.js?v=2';
 
 export class Game {
   constructor() {
@@ -106,7 +106,9 @@ export class Game {
     for (let i = 0; i < CONFIG.numAI; i++) {
       const kart = new Kart(this.scene, this.physicsWorld, startPositions[i + 1].pos, startPositions[i + 1].angle, CONFIG.colors[i + 1], i + 1, false, this.track);
       this.karts.push(kart);
-      this.aiControllers.push(new AIController(i, this.track));
+      const ai = new AIController(i, this.track);
+      ai.initPosition(startPositions[i + 1].pos);
+      this.aiControllers.push(ai);
     }
 
     // RaceManager
@@ -142,6 +144,11 @@ export class Game {
     const startPositions = this.track.getStartPositions();
     for (let i = 0; i < this.karts.length; i++) {
       this.karts[i].reset(startPositions[i].pos, startPositions[i].angle);
+    }
+
+    // Reset AI waypoint tracking
+    for (let i = 0; i < this.aiControllers.length; i++) {
+      this.aiControllers[i].initPosition(startPositions[i + 1].pos);
     }
 
     this.raceManager.startCountdown();
@@ -196,13 +203,18 @@ export class Game {
       }
 
       // Respawn karts that fell off track
-      for (const kart of this.karts) {
+      for (let ki = 0; ki < this.karts.length; ki++) {
+        const kart = this.karts[ki];
         if (kart.physics.chassisBody.position.y < -5) {
           const t = kart.physics.currentSplineT || 0;
           const p = this.track.spline.getPointAt(t);
           const tang = this.track.spline.getTangentAt(t);
           const angle = Math.atan2(tang.x, tang.z);
           kart.physics.reset(p, angle);
+          // Update AI nearest waypoint after respawn
+          if (!kart.isPlayer && this.aiControllers[ki - 1]) {
+            this.aiControllers[ki - 1].initPosition(p);
+          }
         }
       }
 

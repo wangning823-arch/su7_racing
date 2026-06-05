@@ -1,6 +1,6 @@
-import { KartPhysics } from './physics.js';
-import { KartRenderer } from './kart-renderer.js';
-import { CONFIG } from './config.js';
+import { KartPhysics } from './physics.js?v=2';
+import { KartRenderer } from './kart-renderer.js?v=2';
+import { CONFIG } from './config.js?v=2';
 
 export class Kart {
   constructor(scene, world, startPos, startAngle, color, index, isPlayer = false, track = null) {
