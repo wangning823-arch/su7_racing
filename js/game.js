@@ -4,6 +4,7 @@ import { CONFIG } from './config.js?v=2';
 import { InputManager } from './input.js?v=2';
 import { TrackBuilder } from './track.js?v=2';
 import { Kart } from './kart.js?v=2';
+import { KartRenderer } from './kart-renderer.js?v=2';
 import { AIController } from './ai.js?v=2';
 import { CameraController } from './camera.js?v=2';
 import { RaceManager } from './race.js?v=2';
@@ -133,6 +134,9 @@ export class Game {
     window.addEventListener('resize', () => this.onResize());
     document.getElementById('startBtn').addEventListener('click', () => this.startRace());
     document.getElementById('restartBtn').addEventListener('click', () => this.startRace());
+
+    // Preload car model
+    KartRenderer.preload();
   }
 
   startRace() {
@@ -236,6 +240,11 @@ export class Game {
 
     } else if (this.raceManager.state === 'COUNTDOWN') {
       this.hud.showCountdown(this.raceManager.countdownTime);
+
+      // Hide countdown when transition to RACING
+      if (this.raceManager.countdownTime <= 0) {
+        this.hud.hideCountdown();
+      }
 
       // Physics step (for stability)
       this.accumulator += dt;

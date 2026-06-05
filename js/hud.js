@@ -25,6 +25,7 @@ export class HUD {
     if (time > 0.5) {
       this.elCountdown.style.display = 'block';
       this.elCountdown.textContent = Math.ceil(time - 0.5);
+      this.elCountdown.style.color = '#e94560';
     } else if (time > 0) {
       this.elCountdown.textContent = 'GO!';
       this.elCountdown.style.color = '#2ecc71';
@@ -32,5 +33,10 @@ export class HUD {
       this.elCountdown.style.display = 'none';
       this.elCountdown.style.color = '#e94560';
     }
+  }
+
+  hideCountdown() {
+    this.elCountdown.style.display = 'none';
+    this.elCountdown.style.color = '#e94560';
   }
 }
