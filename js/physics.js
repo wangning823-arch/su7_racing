@@ -90,7 +90,8 @@ export class KartPhysics {
     const info = this.getTrackInfo();
     const pos = this.chassisBody.position;
 
-    const groundY = info.height + 0.4;
+    // Ground height with cross-slope: adjust for lateral offset on tilted track
+    const groundY = info.height + info.crossSlope * info.lateralOffset + 0.4;
     if (pos.y < groundY) {
       pos.y = groundY;
       this.chassisBody.position = pos;
@@ -99,7 +100,18 @@ export class KartPhysics {
       }
     }
 
-    const halfTrack = CONFIG.trackWidth / 2 - 1.0;
+    // Tilt kart to match track surface normal
+    if (info.normal) {
+      const n = info.normal;
+      // Compute pitch (forward tilt) and roll (lateral tilt) from surface normal
+      const pitch = Math.atan2(-n.z, n.y);  // forward/back tilt
+      const roll = Math.atan2(n.x, n.y);    // left/right tilt
+      const headingQuat = new CANNON.Quaternion();
+      headingQuat.setFromEuler(pitch, this.heading, roll);
+      this.chassisBody.quaternion.copy(headingQuat);
+    }
+
+    const halfTrack = (this.track._trackWidth || CONFIG.trackWidth) / 2 - 1.0;
     if (Math.abs(info.lateralOffset) > halfTrack) {
       const pushDir = info.lateralOffset > 0 ? -1 : 1;
       const overshoot = Math.abs(info.lateralOffset) - halfTrack;
@@ -140,11 +152,41 @@ export class KartPhysics {
     this.currentSplineT = bestT;
     const nearest = this.track.spline.getPointAt(bestT);
     const tangent = this.track.spline.getTangentAt(bestT);
-    const right = { x: tangent.z, y: 0, z: -tangent.x };
+
+    // Compute right vector and surface normal
+    const up = { x: 0, y: 1, z: 0 };
+    // right = cross(up, tangent) — points to the right of the track
+    const right = {
+      x: up.y * tangent.z - up.z * tangent.y,
+      y: up.z * tangent.x - up.x * tangent.z,
+      z: up.x * tangent.y - up.y * tangent.x
+    };
+    const rLen = Math.sqrt(right.x * right.x + right.y * right.y + right.z * right.z);
+    if (rLen > 0.001) { right.x /= rLen; right.y /= rLen; right.z /= rLen; }
+
+    const normal = {
+      x: tangent.y * right.z - tangent.z * right.y,
+      y: tangent.z * right.x - tangent.x * right.z,
+      z: tangent.x * right.y - tangent.y * right.x
+    };
+
     const dx = pos.x - nearest.x;
     const dz = pos.z - nearest.z;
     const lateralOffset = dx * right.x + dz * right.z;
-    return { height: nearest.y, nearest, tangent, right, lateralOffset };
+
+    // Cross-slope: how much the surface tilts per unit of lateral offset
+    // Check height at a point offset to the right to compute slope
+    const sampleT = bestT;
+    const samplePt = this.track.spline.getPointAt(sampleT);
+    const offsetPt = {
+      x: samplePt.x + right.x * 2,
+      y: samplePt.y + right.y * 2,
+      z: samplePt.z + right.z * 2
+    };
+    // Approximate cross-slope from tangent binormal y-component
+    const crossSlope = right.y;
+
+    return { height: nearest.y, nearest, tangent, right, normal, lateralOffset, crossSlope };
   }
 
   getTrackHeight() {

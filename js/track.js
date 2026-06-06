@@ -9,52 +9,37 @@ export class TrackBuilder {
     this.waypoints = [];
     this.trackLength = 0;
     this.checkpoints = [];
+    this.meshes = [];
   }
 
-  build() {
-    const y = 0;
-    const pts = [
-      new THREE.Vector3(125, y, 0),
-      new THREE.Vector3(133, y, 21),
-      new THREE.Vector3(121, y, 39),
-      new THREE.Vector3(95, y, 49),
-      new THREE.Vector3(71, y, 51),
-      new THREE.Vector3(55, y, 55),
-      new THREE.Vector3(45, y, 62),
-      new THREE.Vector3(33, y, 64),
-      new THREE.Vector3(18, y, 55),
-      new THREE.Vector3(6, y, 36),
-      new THREE.Vector3(0, y, 30),
-      new THREE.Vector3(-5, y, 30),
-      new THREE.Vector3(-12, y, 36),
-      new THREE.Vector3(-26, y, 52),
-      new THREE.Vector3(-45, y, 62),
-      new THREE.Vector3(-65, y, 65),
-      new THREE.Vector3(-87, y, 63),
-      new THREE.Vector3(-108, y, 55),
-      new THREE.Vector3(-121, y, 39),
-      new THREE.Vector3(-119, y, 19),
-      new THREE.Vector3(-105, y, 0),
-      new THREE.Vector3(-91, y, -14),
-      new THREE.Vector3(-85, y, -28),
-      new THREE.Vector3(-84, y, -43),
-      new THREE.Vector3(-76, y, -55),
-      new THREE.Vector3(-58, y, -58),
-      new THREE.Vector3(-36, y, -50),
-      new THREE.Vector3(-21, y, -42),
-      new THREE.Vector3(-14, y, -44),
-      new THREE.Vector3(-9, y, -56),
-      new THREE.Vector3(0, y, -68),
-      new THREE.Vector3(11, y, -70),
-      new THREE.Vector3(20, y, -63),
-      new THREE.Vector3(28, y, -54),
-      new THREE.Vector3(36, y, -50),
-      new THREE.Vector3(48, y, -48),
-      new THREE.Vector3(60, y, -44),
-      new THREE.Vector3(71, y, -36),
-      new THREE.Vector3(85, y, -28),
-      new THREE.Vector3(105, y, -17),
-    ];
+  clear() {
+    for (const m of this.meshes) {
+      this.scene.remove(m);
+      if (m.geometry) m.geometry.dispose();
+      if (m.material) {
+        if (Array.isArray(m.material)) m.material.forEach(mt => mt.dispose());
+        else m.material.dispose();
+      }
+    }
+    this.meshes = [];
+    this.spline = null;
+    this.waypoints = [];
+    this.checkpoints = [];
+  }
+
+  _add(mesh) {
+    this.scene.add(mesh);
+    this.meshes.push(mesh);
+  }
+
+  build(trackDef) {
+    // Convert [x,y,z] arrays to Vector3
+    const pts = trackDef.points.map(p => new THREE.Vector3(p[0], p[1], p[2]));
+
+    // Apply track width override if provided
+    if (trackDef.trackWidth) {
+      this._trackWidth = trackDef.trackWidth;
+    }
 
     this.spline = new THREE.CatmullRomCurve3(pts, true, 'catmullrom', 0.5);
     this.trackLength = this.spline.getLength();
@@ -74,7 +59,7 @@ export class TrackBuilder {
   buildRoad() {
     const segs = CONFIG.trackSegments;
     const frames = this.spline.computeFrenetFrames(segs, true);
-    const hw = CONFIG.trackWidth / 2;
+    const hw = (this._trackWidth || CONFIG.trackWidth) / 2;
     const verts = [], uvs = [], indices = [];
 
     for (let i = 0; i <= segs; i++) {
@@ -125,13 +110,13 @@ export class TrackBuilder {
     const mat = new THREE.MeshStandardMaterial({ map: tex, roughness: 0.6, metalness: 0.1 });
     const mesh = new THREE.Mesh(geo, mat);
     mesh.receiveShadow = true;
-    this.scene.add(mesh);
+    this._add(mesh);
   }
 
   buildCurbs() {
     const segs = 200;
     const frames = this.spline.computeFrenetFrames(segs, true);
-    const hw = CONFIG.trackWidth / 2;
+    const hw = (this._trackWidth || CONFIG.trackWidth) / 2;
     const curbW = 1.0;
 
     for (let side of [-1, 1]) {
@@ -167,14 +152,14 @@ export class TrackBuilder {
       const mat = new THREE.MeshStandardMaterial({ map: tex, roughness: 0.5 });
       const mesh = new THREE.Mesh(geo, mat);
       mesh.receiveShadow = true;
-      this.scene.add(mesh);
+      this._add(mesh);
     }
   }
 
   buildBarriers() {
     const segs = 200;
     const frames = this.spline.computeFrenetFrames(segs, true);
-    const hw = CONFIG.trackWidth / 2 + 1.3;
+    const hw = (this._trackWidth || CONFIG.trackWidth) / 2 + 1.3;
     const h = 0.8;
 
     for (let side of [-1, 1]) {
@@ -182,10 +167,11 @@ export class TrackBuilder {
       for (let i = 0; i <= segs; i++) {
         const p = this.spline.getPointAt(i / segs);
         const b = frames.binormals[i];
-        const x = p.x + b.x * hw * side;
-        const y = p.y;
-        const z = p.z + b.z * hw * side;
-        verts.push(x, y, z, x, y + h, z);
+        const baseX = p.x + b.x * hw * side;
+        const baseY = p.y + b.y * hw * side;
+        const baseZ = p.z + b.z * hw * side;
+        // Barrier extends vertically (world up)
+        verts.push(baseX, baseY, baseZ, baseX, baseY + h, baseZ);
       }
       for (let i = 0; i < segs; i++) {
         const a = i * 2, b = a + 1;
@@ -201,7 +187,7 @@ export class TrackBuilder {
       const mat = new THREE.MeshStandardMaterial({ color: 0x888888, roughness: 0.4, metalness: 0.5 });
       const mesh = new THREE.Mesh(geo, mat);
       mesh.castShadow = true;
-      this.scene.add(mesh);
+      this._add(mesh);
     }
   }
 
@@ -227,9 +213,9 @@ export class TrackBuilder {
     tex.repeat.set(50, 50);
     const mat = new THREE.MeshStandardMaterial({ map: tex, roughness: 0.95 });
     const ground = new THREE.Mesh(geo, mat);
-    ground.position.y = -0.1;
+    ground.position.y = -2;
     ground.receiveShadow = true;
-    this.scene.add(ground);
+    this._add(ground);
   }
 
   buildTrees() {
@@ -272,9 +258,9 @@ export class TrackBuilder {
     trunkMesh.instanceMatrix.needsUpdate = true;
     leaves1.instanceMatrix.needsUpdate = true;
     leaves2.instanceMatrix.needsUpdate = true;
-    this.scene.add(trunkMesh);
-    this.scene.add(leaves1);
-    this.scene.add(leaves2);
+    this._add(trunkMesh);
+    this._add(leaves1);
+    this._add(leaves2);
   }
 
   buildStartLine() {
@@ -298,28 +284,28 @@ export class TrackBuilder {
         ctx.fillRect(i * 8, j * 8, 8, 8);
       }
     const tex = new THREE.CanvasTexture(canvas);
-    const geo = new THREE.PlaneGeometry(CONFIG.trackWidth, 2);
+    const geo = new THREE.PlaneGeometry(this._trackWidth || CONFIG.trackWidth, 2);
     const mat = new THREE.MeshStandardMaterial({ map: tex, roughness: 0.5 });
     const line = new THREE.Mesh(geo, mat);
     line.rotation.x = -Math.PI / 2;
     line.rotation.z = -angle;
     line.position.set(p.x, p.y + 0.08, p.z);
-    this.scene.add(line);
+    this._add(line);
 
     const poleGeo = new THREE.CylinderGeometry(0.1, 0.1, 4, 8);
     const poleMat = new THREE.MeshStandardMaterial({ color: 0xcccccc, metalness: 0.7 });
     for (let side of [-1, 1]) {
       const pole = new THREE.Mesh(poleGeo, poleMat);
-      const offset = right.clone().multiplyScalar(CONFIG.trackWidth / 2 * side);
+      const offset = right.clone().multiplyScalar((this._trackWidth || CONFIG.trackWidth) / 2 * side);
       pole.position.set(p.x + offset.x, p.y + 2, p.z + offset.z);
-      this.scene.add(pole);
+      this._add(pole);
       const flag = new THREE.Mesh(
         new THREE.PlaneGeometry(1.5, 0.8),
         new THREE.MeshStandardMaterial({ color: side === -1 ? 0xe74c3c : 0x3498db, side: THREE.DoubleSide })
       );
       flag.position.set(p.x + offset.x, p.y + 3.6, p.z + offset.z);
       flag.rotation.y = angle;
-      this.scene.add(flag);
+      this._add(flag);
     }
   }
 
@@ -377,7 +363,7 @@ export class TrackBuilder {
       const arrow = new THREE.Mesh(geo, mat);
       arrow.rotation.y = angle;
       arrow.position.set(p.x, p.y + 0.1, p.z);
-      this.scene.add(arrow);
+      this._add(arrow);
     }
   }
 
@@ -393,14 +379,14 @@ export class TrackBuilder {
     stand.position.set(standPos.x, standPos.y + 2, standPos.z);
     stand.rotation.y = Math.atan2(t90.x, t90.z);
     stand.castShadow = true;
-    this.scene.add(stand);
+    this._add(stand);
 
     const roofGeo = new THREE.BoxGeometry(22, 0.3, 8);
     const roofMat = new THREE.MeshStandardMaterial({ color: 0xe74c3c });
     const roof = new THREE.Mesh(roofGeo, roofMat);
     roof.position.set(standPos.x, standPos.y + 4.3, standPos.z);
     roof.rotation.y = Math.atan2(t90.x, t90.z);
-    this.scene.add(roof);
+    this._add(roof);
 
     for (let i = 0; i < 10; i++) {
       for (let j = 0; j < 3; j++) {
@@ -413,7 +399,7 @@ export class TrackBuilder {
         const sz = standPos.z + (j - 1) * 2;
         seat.position.set(sx, sy, sz);
         seat.rotation.y = Math.atan2(t90.x, t90.z);
-        this.scene.add(seat);
+        this._add(seat);
       }
     }
 
@@ -427,7 +413,7 @@ export class TrackBuilder {
     );
     board.position.set(boardPos.x, boardPos.y + 2.5, boardPos.z);
     board.rotation.y = Math.atan2(t25.x, t25.z);
-    this.scene.add(board);
+    this._add(board);
 
     const tireGeo = new THREE.TorusGeometry(0.4, 0.2, 8, 12);
     const tireMat = new THREE.MeshStandardMaterial({ color: 0x222222 });
@@ -442,7 +428,7 @@ export class TrackBuilder {
         const ty = this.getTerrainHeight(tx, tz) + 0.4 + j * 0.8;
         tire.position.set(tx, ty, tz);
         tire.rotation.x = Math.PI / 2;
-        this.scene.add(tire);
+        this._add(tire);
       }
     }
   }
@@ -457,8 +443,16 @@ export class TrackBuilder {
     return minD;
   }
 
-  getTerrainHeight() {
-    return 0;
+  getTerrainHeight(x, z) {
+    if (!this.spline) return 0;
+    let minD = Infinity;
+    let bestT = 0;
+    for (let t = 0; t < 1; t += 0.01) {
+      const p = this.spline.getPointAt(t);
+      const d = (x - p.x) ** 2 + (z - p.z) ** 2;
+      if (d < minD) { minD = d; bestT = t; }
+    }
+    return this.spline.getPointAt(bestT).y;
   }
 
   generateWaypoints() {

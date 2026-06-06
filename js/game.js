@@ -3,6 +3,7 @@ import * as CANNON from 'cannon-es';
 import { CONFIG } from './config.js?v=2';
 import { InputManager } from './input.js?v=2';
 import { TrackBuilder } from './track.js?v=2';
+import { TRACKS } from './tracks.js?v=1';
 import { Kart } from './kart.js?v=2';
 import { KartRenderer } from './kart-renderer.js?v=2';
 import { AIController } from './ai.js?v=2';
@@ -80,63 +81,36 @@ export class Game {
     });
     this.physicsWorld.defaultContactMaterial.friction = 0.3;
 
-    // Track
+    // Track (built later when user selects a map)
     this.track = new TrackBuilder(this.scene, this.physicsWorld);
-    this.track.build();
+    this.selectedTrackId = null;
 
-    // Ground plane for physics (prevents karts from falling through)
-    const groundBody = new CANNON.Body({
-      mass: 0,
-      material: new CANNON.Material({ friction: 0.5, restitution: 0.1 })
-    });
-    groundBody.addShape(new CANNON.Plane());
-    groundBody.quaternion.setFromEuler(-Math.PI / 2, 0, 0);
-    groundBody.position.set(0, -0.1, 0);
-    this.physicsWorld.addBody(groundBody);
+    // Map selection UI
+    this.setupMapSelect();
+
+    // Ground plane removed — postUpdate() handles ground following via spline height
 
     // Input
     this.input = new InputManager();
 
-    // Create karts
-    const startPositions = this.track.getStartPositions();
-    this.karts = [];
-
-    // Player kart
-    this.player = new Kart(this.scene, this.physicsWorld, startPositions[0].pos, startPositions[0].angle, CONFIG.colors[0], 0, true, this.track);
-    this.karts.push(this.player);
-
-    // AI karts
-    this.aiControllers = [];
-    for (let i = 0; i < CONFIG.numAI; i++) {
-      const kart = new Kart(this.scene, this.physicsWorld, startPositions[i + 1].pos, startPositions[i + 1].angle, CONFIG.colors[i + 1], i + 1, false, this.track);
-      this.karts.push(kart);
-      const ai = new AIController(i, this.track);
-      ai.initPosition(startPositions[i + 1].pos);
-      this.aiControllers.push(ai);
-    }
-
-    // RaceManager
-    this.raceManager = new RaceManager();
-    this.raceManager.karts = this.karts;
-    this.raceManager.track = this.track;
-
-    // Camera
+    // Camera, HUD, Particles (don't depend on track)
     this.cameraController = new CameraController(this.camera);
-
-    // HUD & MiniMap
     this.hud = new HUD();
-    this.minimap = new MiniMap(document.getElementById('minimap'), this.track);
-
-    // Particles
     this.particles = new ParticleSystem(this.scene);
+
+    // Karts, AI, Race, MiniMap — created when track is selected
+    this.karts = [];
+    this.aiControllers = [];
+    this.raceManager = null;
+    this.minimap = null;
 
     // Clock
     this.clock = new THREE.Clock();
 
     // Events
     window.addEventListener('resize', () => this.onResize());
-    document.getElementById('startBtn').addEventListener('click', () => this.startRace());
-    document.getElementById('restartBtn').addEventListener('click', () => this.startRace());
+    document.getElementById('startBtn').addEventListener('click', () => this.showMapSelect());
+    document.getElementById('restartBtn').addEventListener('click', () => this.showMapSelect());
 
     // Preload car model
     KartRenderer.preload();
@@ -144,6 +118,7 @@ export class Game {
 
   startRace() {
     document.getElementById('menu').style.display = 'none';
+    document.getElementById('map-select').style.display = 'none';
     document.getElementById('results').style.display = 'none';
     this.hud.show();
 
@@ -252,6 +227,12 @@ export class Game {
         this.accumulator -= this.fixedDt;
       }
 
+      // Keep karts on ground during countdown
+      for (const kart of this.karts) {
+        kart.physics.postUpdate();
+        kart.renderer.update(kart.physics);
+      }
+
       // Camera still works during countdown
       this.cameraController.update(this.player, dt);
       this.minimap.draw(this.karts);
@@ -283,6 +264,126 @@ export class Game {
     }
 
     document.getElementById('results').style.display = 'flex';
+  }
+
+  setupMapSelect() {
+    const grid = document.getElementById('map-grid');
+    grid.innerHTML = '';
+    for (const track of TRACKS) {
+      const card = document.createElement('div');
+      card.className = 'map-card';
+      card.dataset.trackId = track.id;
+
+      const diffClass = { easy: 'diff-easy', medium: 'diff-medium', hard: 'diff-hard' }[track.difficulty];
+      const diffLabel = { easy: '简单', medium: '中等', hard: '困难' }[track.difficulty];
+
+      card.innerHTML = `<h3>${track.name}</h3><span class="difficulty ${diffClass}">${diffLabel}</span><canvas width="180" height="120"></canvas>`;
+
+      // Draw track preview on the canvas
+      const canvas = card.querySelector('canvas');
+      this.drawTrackPreview(canvas, track.points);
+
+      card.addEventListener('click', () => {
+        grid.querySelectorAll('.map-card').forEach(c => c.classList.remove('selected'));
+        card.classList.add('selected');
+        this.selectedTrackId = track.id;
+      });
+
+      grid.appendChild(card);
+    }
+
+    document.getElementById('confirmMapBtn').addEventListener('click', () => {
+      if (!this.selectedTrackId) return;
+      this.buildSelectedTrack();
+    });
+  }
+
+  drawTrackPreview(canvas, points) {
+    const ctx = canvas.getContext('2d');
+    const w = canvas.width, h = canvas.height;
+    ctx.fillStyle = '#111';
+    ctx.fillRect(0, 0, w, h);
+
+    // Find bounds (XZ only)
+    let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
+    for (const [x, , z] of points) {
+      if (x < minX) minX = x; if (x > maxX) maxX = x;
+      if (z < minZ) minZ = z; if (z > maxZ) maxZ = z;
+    }
+    const rangeX = maxX - minX || 1;
+    const rangeZ = maxZ - minZ || 1;
+    const scale = Math.min((w - 20) / rangeX, (h - 20) / rangeZ);
+    const ox = (w - rangeX * scale) / 2;
+    const oz = (h - rangeZ * scale) / 2;
+
+    ctx.strokeStyle = '#e94560';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    for (let i = 0; i <= points.length; i++) {
+      const [x, , z] = points[i % points.length];
+      const sx = ox + (x - minX) * scale;
+      const sz = oz + (z - minZ) * scale;
+      if (i === 0) ctx.moveTo(sx, sz); else ctx.lineTo(sx, sz);
+    }
+    ctx.closePath();
+    ctx.stroke();
+
+    // Draw start marker
+    const [sx, , sz] = points[0];
+    ctx.fillStyle = '#2ecc71';
+    ctx.beginPath();
+    ctx.arc(ox + (sx - minX) * scale, oz + (sz - minZ) * scale, 4, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  showMapSelect() {
+    this.running = false;
+    document.getElementById('menu').style.display = 'none';
+    document.getElementById('results').style.display = 'none';
+    document.getElementById('hud').style.display = 'none';
+    document.getElementById('map-select').style.display = 'flex';
+
+    // Reset selection
+    this.selectedTrackId = null;
+    document.querySelectorAll('.map-card').forEach(c => c.classList.remove('selected'));
+  }
+
+  buildSelectedTrack() {
+    const trackDef = TRACKS.find(t => t.id === this.selectedTrackId);
+    if (!trackDef) return;
+
+    // Clear previous track
+    this.track.clear();
+
+    // Build the track
+    this.track.build(trackDef);
+
+    // Create karts at start positions
+    const startPositions = this.track.getStartPositions();
+    // Remove old karts from scene
+    for (const kart of this.karts) {
+      this.scene.remove(kart.renderer.mesh);
+      this.physicsWorld.removeBody(kart.physics.chassisBody);
+    }
+    this.karts = [];
+    this.player = new Kart(this.scene, this.physicsWorld, startPositions[0].pos, startPositions[0].angle, CONFIG.colors[0], 0, true, this.track);
+    this.karts.push(this.player);
+    this.aiControllers = [];
+    for (let i = 0; i < CONFIG.numAI; i++) {
+      const kart = new Kart(this.scene, this.physicsWorld, startPositions[i + 1].pos, startPositions[i + 1].angle, CONFIG.colors[i + 1], i + 1, false, this.track);
+      this.karts.push(kart);
+      const ai = new AIController(i, this.track);
+      ai.initPosition(startPositions[i + 1].pos);
+      this.aiControllers.push(ai);
+    }
+
+    // Setup race manager and minimap
+    this.raceManager = new RaceManager();
+    this.raceManager.karts = this.karts;
+    this.raceManager.track = this.track;
+    this.minimap = new MiniMap(document.getElementById('minimap'), this.track);
+
+    this.startRace();
   }
 
   onResize() {

@@ -27,5 +27,6 @@ export class Kart {
 
   reset(pos, angle) {
     this.physics.reset(pos, angle);
+    this.renderer.update(this.physics);
   }
 }

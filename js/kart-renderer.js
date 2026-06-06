@@ -60,10 +60,10 @@ export class KartRenderer {
     const buildModel = (gltf) => {
       const model = gltf.scene.clone();
 
-      // Calculate bounding box to determine proper scale
+      // Compute bounds from original GLTF transforms
+      model.updateMatrixWorld(true);
       const box = new THREE.Box3().setFromObject(model);
       const size = box.getSize(new THREE.Vector3());
-      const min = box.min;
 
       // Scale to 1.5x game size for visibility
       const modelLength = Math.max(size.x, size.y, size.z);
@@ -71,8 +71,10 @@ export class KartRenderer {
       const scale = targetSize / modelLength;
       model.scale.set(scale, scale, scale);
 
-      // Lower model so wheels touch ground
-      model.position.y = -min.y * scale;
+      // Align bottom of model to ground (Y=0) after scaling
+      model.updateMatrixWorld(true);
+      const scaledBox = new THREE.Box3().setFromObject(model);
+      model.position.y -= scaledBox.min.y;
 
       // Optimize materials for performance
       model.traverse((child) => {
