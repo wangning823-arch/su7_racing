@@ -3,7 +3,7 @@ import * as CANNON from 'cannon-es';
 import { CONFIG } from './config.js?v=2';
 import { InputManager } from './input.js?v=2';
 import { TrackBuilder } from './track.js?v=2';
-import { TRACKS } from './tracks.js?v=1';
+import { TRACKS, DEFAULT_THEME } from './tracks.js?v=1';
 import { Kart } from './kart.js?v=2';
 import { KartRenderer } from './kart-renderer.js?v=2';
 import { AIController } from './ai.js?v=2';
@@ -58,8 +58,8 @@ export class Game {
     this.camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 500);
 
     // Lights
-    const ambient = new THREE.AmbientLight(0xffffff, 0.4);
-    this.scene.add(ambient);
+    this.ambientLight = new THREE.AmbientLight(0xffffff, 0.4);
+    this.scene.add(this.ambientLight);
 
     const sun = new THREE.DirectionalLight(0xffffff, 1.0);
     sun.position.set(50, 100, 50);
@@ -348,15 +348,31 @@ export class Game {
     document.querySelectorAll('.map-card').forEach(c => c.classList.remove('selected'));
   }
 
+  applyTheme(theme) {
+    this.scene.background = new THREE.Color(theme.sky.color);
+    this.scene.fog = new THREE.Fog(theme.sky.color, theme.sky.fogNear, theme.sky.fogFar);
+    if (this.ambientLight) {
+      this.ambientLight.color.set(theme.lighting.ambientColor);
+      this.ambientLight.intensity = theme.lighting.ambientIntensity;
+    }
+    if (this.sun) {
+      this.sun.color.set(theme.lighting.sunColor);
+      this.sun.intensity = theme.lighting.sunIntensity;
+    }
+  }
+
   buildSelectedTrack() {
     const trackDef = TRACKS.find(t => t.id === this.selectedTrackId);
     if (!trackDef) return;
+
+    const theme = trackDef.theme || DEFAULT_THEME;
+    this.applyTheme(theme);
 
     // Clear previous track
     this.track.clear();
 
     // Build the track
-    this.track.build(trackDef);
+    this.track.build(trackDef, theme);
 
     // Create karts at start positions
     const startPositions = this.track.getStartPositions();

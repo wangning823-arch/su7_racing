@@ -10,6 +10,7 @@ export class TrackBuilder {
     this.trackLength = 0;
     this.checkpoints = [];
     this.meshes = [];
+    this.theme = null;
   }
 
   clear() {
@@ -34,7 +35,9 @@ export class TrackBuilder {
     this.meshes.push(mesh);
   }
 
-  build(trackDef) {
+  build(trackDef, theme = null) {
+    this.theme = theme || trackDef.theme || null;
+
     // Convert [x,y,z] arrays to Vector3
     const pts = trackDef.points.map(p => new THREE.Vector3(p[0], p[1], p[2]));
 
@@ -61,6 +64,7 @@ export class TrackBuilder {
     this.buildStartLine();
     this.buildArrows();
     this.buildScenery();
+    this.buildBuildings();
   }
 
   buildRoad() {
@@ -202,50 +206,67 @@ export class TrackBuilder {
     const geo = new THREE.PlaneGeometry(500, 500);
     geo.rotateX(-Math.PI / 2);
 
+    const g = this.theme?.ground || {};
+
     const canvas = document.createElement('canvas');
     canvas.width = 128; canvas.height = 128;
     const ctx = canvas.getContext('2d');
     const grad = ctx.createRadialGradient(64, 64, 0, 64, 64, 64);
-    grad.addColorStop(0, '#3d7a28');
-    grad.addColorStop(1, '#2d5a1e');
+    grad.addColorStop(0, g.centerColor || '#3d7a28');
+    grad.addColorStop(1, g.edgeColor || '#2d5a1e');
     ctx.fillStyle = grad;
     ctx.fillRect(0, 0, 128, 128);
-    ctx.fillStyle = '#4a8c35';
-    for (let i = 0; i < 40; i++) {
+    ctx.fillStyle = g.dotColor || '#4a8c35';
+    for (let i = 0; i < (g.dotCount ?? 40); i++) {
       const x = Math.random() * 120, y = Math.random() * 120;
       ctx.fillRect(x, y, 2 + Math.random() * 3, 2 + Math.random() * 3);
     }
     const tex = new THREE.CanvasTexture(canvas);
     tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
     tex.repeat.set(50, 50);
-    const mat = new THREE.MeshStandardMaterial({ map: tex, roughness: 0.95 });
+    const mat = new THREE.MeshStandardMaterial({ map: tex, roughness: g.roughness ?? 0.95 });
     const ground = new THREE.Mesh(geo, mat);
     ground.position.y = -2;
     ground.receiveShadow = true;
     this._add(ground);
   }
 
+  _createLeafGeometry(type) {
+    switch (type) {
+      case 'cactus': return new THREE.ConeGeometry(0.4, 4.0, 6);
+      case 'dead': return new THREE.ConeGeometry(0.3, 2.0, 4);
+      case 'cone': return new THREE.ConeGeometry(1.5, 3.5, 8);
+      default: return new THREE.SphereGeometry(1.8, 8, 6);
+    }
+  }
+
   buildTrees() {
-    const count = 400;
-    const trunkGeo = new THREE.CylinderGeometry(0.15, 0.25, 2.5, 6);
-    const trunkMat = new THREE.MeshStandardMaterial({ color: 0x5a3a1a });
-    const leavesGeo1 = new THREE.SphereGeometry(1.8, 8, 6);
-    const leavesGeo2 = new THREE.ConeGeometry(1.5, 3.5, 8);
-    const leavesMat1 = new THREE.MeshStandardMaterial({ color: 0x2e7d32 });
-    const leavesMat2 = new THREE.MeshStandardMaterial({ color: 0x388e3c });
+    const t = this.theme?.trees || {};
+    const count = t.count ?? 400;
+    if (count === 0) return;
+
+    const trunkGeo = new THREE.CylinderGeometry(
+      t.trunkRadiusTop ?? 0.15, t.trunkRadiusBottom ?? 0.25, t.trunkHeight ?? 2.5, 6
+    );
+    const trunkMat = new THREE.MeshStandardMaterial({ color: t.trunkColor ?? 0x5a3a1a });
+    const leafGeo1 = this._createLeafGeometry(t.leafGeometries?.[0] ?? 'sphere');
+    const leafGeo2 = this._createLeafGeometry(t.leafGeometries?.[1] ?? 'cone');
+    const leavesMat1 = new THREE.MeshStandardMaterial({ color: t.leafColors?.[0] ?? 0x2e7d32 });
+    const leavesMat2 = new THREE.MeshStandardMaterial({ color: t.leafColors?.[1] ?? 0x388e3c });
 
     const trunkMesh = new THREE.InstancedMesh(trunkGeo, trunkMat, count);
-    const leaves1 = new THREE.InstancedMesh(leavesGeo1, leavesMat1, Math.floor(count * 0.6));
-    const leaves2 = new THREE.InstancedMesh(leavesGeo2, leavesMat2, Math.ceil(count * 0.4));
+    const leaves1 = new THREE.InstancedMesh(leafGeo1, leavesMat1, Math.floor(count * 0.6));
+    const leaves2 = new THREE.InstancedMesh(leafGeo2, leavesMat2, Math.ceil(count * 0.4));
     const dummy = new THREE.Object3D();
 
+    const minDist = t.minDistToTrack ?? 18;
     let idx1 = 0, idx2 = 0;
     for (let i = 0; i < count; i++) {
       let x, z;
       do {
         x = (Math.random() - 0.5) * 400;
         z = (Math.random() - 0.5) * 400;
-      } while (this.distToTrack(x, z) < 18);
+      } while (this.distToTrack(x, z) < minDist);
       const y = this.getTerrainHeight(x, z);
       const scale = 0.7 + Math.random() * 0.8;
       dummy.position.set(x, y + 1.2 * scale, z);
@@ -375,13 +396,14 @@ export class TrackBuilder {
   }
 
   buildScenery() {
+    const s = this.theme?.scenery || {};
     const p90 = this.spline.getPointAt(0.9);
     const t90 = this.spline.getTangentAt(0.9);
     const right90 = new THREE.Vector3(t90.z, 0, -t90.x).normalize();
 
     const standPos = p90.clone().add(right90.clone().multiplyScalar(25));
     const standGeo = new THREE.BoxGeometry(20, 4, 6);
-    const standMat = new THREE.MeshStandardMaterial({ color: 0x34495e, roughness: 0.6 });
+    const standMat = new THREE.MeshStandardMaterial({ color: s.standColor ?? 0x34495e, roughness: 0.6 });
     const stand = new THREE.Mesh(standGeo, standMat);
     stand.position.set(standPos.x, standPos.y + 2, standPos.z);
     stand.rotation.y = Math.atan2(t90.x, t90.z);
@@ -389,17 +411,18 @@ export class TrackBuilder {
     this._add(stand);
 
     const roofGeo = new THREE.BoxGeometry(22, 0.3, 8);
-    const roofMat = new THREE.MeshStandardMaterial({ color: 0xe74c3c });
+    const roofMat = new THREE.MeshStandardMaterial({ color: s.roofColor ?? 0xe74c3c });
     const roof = new THREE.Mesh(roofGeo, roofMat);
     roof.position.set(standPos.x, standPos.y + 4.3, standPos.z);
     roof.rotation.y = Math.atan2(t90.x, t90.z);
     this._add(roof);
 
+    const seatColors = s.seatColors ?? [0xe74c3c, 0x3498db, 0xf1c40f];
     for (let i = 0; i < 10; i++) {
       for (let j = 0; j < 3; j++) {
         const seat = new THREE.Mesh(
           new THREE.BoxGeometry(0.5, 0.8, 0.5),
-          new THREE.MeshStandardMaterial({ color: [0xe74c3c, 0x3498db, 0xf1c40f][j % 3] })
+          new THREE.MeshStandardMaterial({ color: seatColors[j % 3] })
         );
         const sx = standPos.x + (i - 5) * 1.8;
         const sy = standPos.y + 0.5 + j * 1.2;
@@ -416,14 +439,14 @@ export class TrackBuilder {
     const boardPos = p25.clone().add(right25.clone().multiplyScalar(-20));
     const board = new THREE.Mesh(
       new THREE.BoxGeometry(8, 3, 0.3),
-      new THREE.MeshStandardMaterial({ color: 0x2c3e50, roughness: 0.3 })
+      new THREE.MeshStandardMaterial({ color: s.boardColor ?? 0x2c3e50, roughness: 0.3 })
     );
     board.position.set(boardPos.x, boardPos.y + 2.5, boardPos.z);
     board.rotation.y = Math.atan2(t25.x, t25.z);
     this._add(board);
 
     const tireGeo = new THREE.TorusGeometry(0.4, 0.2, 8, 12);
-    const tireMat = new THREE.MeshStandardMaterial({ color: 0x222222 });
+    const tireMat = new THREE.MeshStandardMaterial({ color: s.tireColor ?? 0x222222 });
     const p60 = this.spline.getPointAt(0.6);
     const t60 = this.spline.getTangentAt(0.6);
     const right60 = new THREE.Vector3(t60.z, 0, -t60.x).normalize();
@@ -436,6 +459,59 @@ export class TrackBuilder {
         tire.position.set(tx, ty, tz);
         tire.rotation.x = Math.PI / 2;
         this._add(tire);
+      }
+    }
+  }
+
+  buildBuildings() {
+    const b = this.theme?.buildings;
+    if (!b) return;
+
+    const count = b.count ?? 80;
+    const hw = (this._trackWidth || CONFIG.trackWidth) / 2;
+    const minDist = b.minDistToTrack ?? 10;
+
+    const buildingColors = [0x555566, 0x4a4a5a, 0x606070, 0x505060, 0x484858, 0x5a5a6a];
+
+    for (let i = 0; i < count; i++) {
+      let x, z;
+      let attempts = 0;
+      do {
+        x = (Math.random() - 0.5) * 300;
+        z = (Math.random() - 0.5) * 300;
+        attempts++;
+      } while (this.distToTrack(x, z) < minDist && attempts < 50);
+      if (attempts >= 50) continue;
+
+      const w = (b.minWidth ?? 6) + Math.random() * ((b.maxWidth ?? 14) - (b.minWidth ?? 6));
+      const d = (b.minWidth ?? 6) + Math.random() * ((b.maxWidth ?? 14) - (b.minWidth ?? 6));
+      const h = (b.minHeight ?? 8) + Math.random() * ((b.maxHeight ?? 30) - (b.minHeight ?? 8));
+
+      const geo = new THREE.BoxGeometry(w, h, d);
+      const color = buildingColors[Math.floor(Math.random() * buildingColors.length)];
+      const mat = new THREE.MeshStandardMaterial({ color, roughness: 0.7, metalness: 0.2 });
+      const building = new THREE.Mesh(geo, mat);
+      building.position.set(x, h / 2 - 2, z);
+      building.castShadow = true;
+      building.receiveShadow = true;
+      this._add(building);
+
+      // Windows: emissive dots on building faces
+      const windowMat = new THREE.MeshStandardMaterial({ color: 0xffeeaa, emissive: 0xffeeaa, emissiveIntensity: 0.3 });
+      const winGeo = new THREE.PlaneGeometry(0.8, 0.6);
+      const floors = Math.floor(h / 3);
+      const winCols = Math.floor(w / 2);
+      for (let f = 0; f < floors; f++) {
+        for (let c = 0; c < winCols; c++) {
+          if (Math.random() > 0.6) continue;
+          const win = new THREE.Mesh(winGeo, windowMat);
+          win.position.set(
+            x - w / 2 + 1 + c * 2,
+            1 + f * 3,
+            z + d / 2 + 0.05
+          );
+          this._add(win);
+        }
       }
     }
   }

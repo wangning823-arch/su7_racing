@@ -29,67 +29,145 @@ export class KartPhysics {
     const vel = this.chassisBody.velocity;
     this.speed = Math.sqrt(vel.x * vel.x + vel.z * vel.z);
 
-    // Steering
+    // Determine if moving forward or backward
+    const fwdX = Math.sin(this.heading);
+    const fwdZ = Math.cos(this.heading);
+    const fwdDot = vel.x * fwdX + vel.z * fwdZ;
+    const isReversing = fwdDot < -0.5;
+
+    // Steering - reverse direction when backing up
     if (this.speed > 0.5) {
       const speedRatio = this.speed / CONFIG.maxSpeed;
       const steerLimit = CONFIG.steerAngle * (1 - speedRatio * 0.3);
       const steerInput = steer * steerLimit;
-      const turnAmount = steerInput * 5.0 * Math.min(1, this.speed / 8);
-      this.heading += turnAmount * dt;
+      const turnAmount = steerInput * 3.0 * Math.min(1, 8 / Math.max(this.speed, 8));
+      // Reverse steering when backing up
+      this.heading += (isReversing ? -turnAmount : turnAmount) * dt;
     }
 
     // Compute tilt from track surface
     const info = this.getTrackInfo();
-    const fwdX = Math.sin(this.heading);
-    const fwdZ = Math.cos(this.heading);
     const pitchBlend = 0.5;
     const rollBlend = 0.8;
     // Pitch: forward slope (negative = uphill = nose up)
     const pitch = Math.atan2(-info.forwardSlope * pitchBlend, 1);
     // Roll: cross-slope (positive = right side higher = tilt right)
     const roll = Math.atan2(info.crossSlope * rollBlend, 1);
+
+    // Store target quaternion for smooth interpolation
     const tiltQuat = new CANNON.Quaternion();
     tiltQuat.setFromEuler(pitch, 0, roll);
     const headingQuat = new CANNON.Quaternion();
     headingQuat.setFromEuler(0, this.heading, 0);
-    const finalQuat = new CANNON.Quaternion();
-    headingQuat.mult(tiltQuat, finalQuat);
-    this.chassisBody.quaternion.copy(finalQuat);
+    const targetQuat = new CANNON.Quaternion();
+    headingQuat.mult(tiltQuat, targetQuat);
 
-    // Engine: direct velocity change
-    const speedRatio = this.speed / CONFIG.maxSpeed;
+    // Smooth quaternion interpolation to avoid sudden jumps
+    const currentQuat = this.chassisBody.quaternion;
+    const slerpFactor = 0.3; // Lower = smoother but more lag
+    currentQuat.slerp(targetQuat, slerpFactor, this.chassisBody.quaternion);
+
+    // Engine: direct velocity control for instant response
+    const reverseMaxSpeed = CONFIG.maxSpeed * 0.4;
+
     if (throttle > 0) {
-      const accel = (CONFIG.engineForce / this.mass) * throttle * (1 - speedRatio * speedRatio);
-      vel.x += fwdX * accel * dt;
-      vel.z += fwdZ * accel * dt;
+      // Check if velocity is pointing backward (opposite to heading direction)
+      const currentVelFwd = vel.x * fwdX + vel.z * fwdZ;
+
+      if (currentVelFwd < -1.0) {
+        // REVERSING + THROTTLE = IMMEDIATELY switch to forward!
+        // Set velocity to forward direction with proportional speed
+        const reverseSpeed = Math.abs(currentVelFwd);
+        const newForwardSpeed = Math.max(5, reverseSpeed * 0.5);  // At least 5 m/s forward
+
+        // Force velocity to forward direction
+        vel.x = fwdX * newForwardSpeed;
+        vel.z = fwdZ * newForwardSpeed;
+      } else {
+        // Forward or stopped - normal forward acceleration
+        const currentSpeed = Math.sqrt(vel.x * vel.x + vel.z * vel.z);
+        let targetSpeed;
+
+        // SU7 Ultra acceleration profile
+        if (currentSpeed < 27.78) {
+          targetSpeed = currentSpeed + 55 * dt * throttle;
+        } else if (currentSpeed < 55.56) {
+          targetSpeed = currentSpeed + 18.5 * dt * throttle;
+        } else {
+          targetSpeed = currentSpeed + 9.3 * dt * throttle;
+        }
+
+        targetSpeed = Math.min(targetSpeed, CONFIG.maxSpeed);
+
+        // Apply speed in forward direction
+        if (currentSpeed > 0.1) {
+          const scale = targetSpeed / currentSpeed;
+          vel.x *= scale;
+          vel.z *= scale;
+        } else {
+          vel.x = fwdX * targetSpeed;
+          vel.z = fwdZ * targetSpeed;
+        }
+      }
     }
 
-    // Braking: direct velocity change opposing motion
-    if (brake > 0 && this.speed > 0.1) {
-      const brakeDecel = this.speed > 3 ? (CONFIG.brakeForce / this.mass) * 15 * brake : (CONFIG.brakeForce / this.mass) * 5 * brake;
-      const vLen = this.speed;
-      vel.x -= (vel.x / vLen) * brakeDecel * dt;
-      vel.z -= (vel.z / vLen) * brakeDecel * dt;
+    // Braking / Reverse: when brake is pressed (down arrow)
+    if (brake > 0) {
+      if (!isReversing && this.speed > 0.5) {
+        // Strong braking - proportional to speed for realistic feel
+        const brakeForce = 40;  // Strong deceleration
+        const newSpeed = Math.max(0, this.speed - brakeForce * dt);
+        const scale = newSpeed / this.speed;
+        vel.x *= scale;
+        vel.z *= scale;
+      } else if (isReversing || this.speed <= 0.5) {
+        // Reverse acceleration when stopped or reversing
+        const reverseAccel = 15;  // Reverse acceleration
+        const currentReverseSpeed = isReversing ? this.speed : 0;
+
+        if (currentReverseSpeed < reverseMaxSpeed) {
+          // Accelerate in reverse direction
+          vel.x -= fwdX * reverseAccel * dt;
+          vel.z -= fwdZ * reverseAccel * dt;
+        } else {
+          // Cap reverse speed
+          const newSpeed = reverseMaxSpeed;
+          if (this.speed > 0.1) {
+            const scale = newSpeed / this.speed;
+            vel.x *= scale;
+            vel.z *= scale;
+          }
+        }
+      }
     }
 
-    // Lateral friction: remove sideways velocity + prevent backward motion
+    // Lateral friction: remove sideways velocity
+    // IMPORTANT: recalculate fwdDot after velocity changes!
+    const currentFwdDot = vel.x * fwdX + vel.z * fwdZ;
     if (this.speed > 0.5) {
-      const fwdDot = vel.x * fwdX + vel.z * fwdZ;
-      const projX = fwdX * fwdDot;
-      const projZ = fwdZ * fwdDot;
-      const sideX = vel.x - projX;
-      const sideZ = vel.z - projZ;
+      const sideX = vel.x - fwdX * currentFwdDot;
+      const sideZ = vel.z - fwdZ * currentFwdDot;
       const keep = this.isDrifting ? 0.95 : 0.1;
 
-      if (fwdDot >= 0) {
-        // Moving forward: keep forward + small lateral
-        vel.x = projX + sideX * keep;
-        vel.z = projZ + sideZ * keep;
-      } else {
-        // Moving backward: zero out backward component (prevent reverse)
-        vel.x = sideX * keep;
-        vel.z = sideZ * keep;
-      }
+      // Keep forward/backward component + small lateral
+      vel.x = fwdX * currentFwdDot + sideX * keep;
+      vel.z = fwdZ * currentFwdDot + sideZ * keep;
+    }
+
+    // Air drag + rolling resistance (always active, simulates real deceleration)
+    if (this.speed > 0.1 && throttle <= 0 && brake <= 0) {
+      // Only apply when coasting (no throttle or brake)
+      const speedNorm = this.speed / CONFIG.maxSpeed;
+      // Air drag: proportional to v^2, calibrated so at max speed decel ≈ 2 m/s²
+      const airDrag = 2.0 * speedNorm * speedNorm;
+      // Rolling resistance: constant ~1 m/s²
+      const rollingResistance = 1.0;
+      const totalDecel = airDrag + rollingResistance;
+      const dragReduction = totalDecel * dt;
+      // Don't reduce by more than current speed (avoid negative)
+      const dragFactor = Math.max(0, 1 - Math.min(dragReduction, this.speed * 0.5) / this.speed);
+      vel.x *= dragFactor;
+      vel.z *= dragFactor;
     }
 
     this.isDrifting = drift && this.speed > 8;
@@ -112,22 +190,30 @@ export class KartPhysics {
       (CONFIG.chassisL / 2) * Math.abs(Math.sin(pitch))
     );
     const groundY = roadSurfaceY + 0.4 + tiltDip;
-    if (pos.y < groundY) {
-      pos.y = groundY;
+
+    // Smooth height interpolation to avoid jumps
+    const heightDiff = groundY - pos.y;
+    if (Math.abs(heightDiff) > 0.01) {
+      // Only adjust if significantly off ground
+      pos.y += heightDiff * 0.5; // Smooth follow
       this.chassisBody.position = pos;
       if (this.chassisBody.velocity.y < 0) {
         this.chassisBody.velocity.y *= 0.3;
       }
     }
 
-    // Apply tilt (needed during COUNTDOWN when update() is not called)
+    // Apply tilt smoothly (needed during COUNTDOWN when update() is not called)
     const tiltQuat = new CANNON.Quaternion();
     tiltQuat.setFromEuler(pitch, 0, roll);
     const headingQuat = new CANNON.Quaternion();
     headingQuat.setFromEuler(0, this.heading, 0);
-    const finalQuat = new CANNON.Quaternion();
-    headingQuat.mult(tiltQuat, finalQuat);
-    this.chassisBody.quaternion.copy(finalQuat);
+    const targetQuat = new CANNON.Quaternion();
+    headingQuat.mult(tiltQuat, targetQuat);
+
+    // Smooth quaternion interpolation
+    const currentQuat = this.chassisBody.quaternion;
+    const slerpFactor = 0.4; // Slightly faster than update() for ground following
+    currentQuat.slerp(targetQuat, slerpFactor, this.chassisBody.quaternion);
 
     const halfTrack = (this.track._trackWidth || CONFIG.trackWidth) / 2 - 1.0;
     if (Math.abs(info.lateralOffset) > halfTrack) {

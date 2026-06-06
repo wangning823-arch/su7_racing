@@ -1,6 +1,6 @@
 export const CONFIG = {
-  maxSpeed: 35,
-  engineForce: 1800,
+  maxSpeed: 83.3,  // 300 km/h
+  engineForce: 4200,
   brakeForce: 80,
   steerAngle: 0.8,
   kartMass: 150,
@@ -10,7 +10,7 @@ export const CONFIG = {
   trackSegments: 1000,
   totalLaps: 3,
   numAI: 1,
-  aiSpeeds: [1.0, 0.95, 0.90, 0.85, 0.80],
+  aiSpeeds: [0.33, 0.30, 0.28, 0.25, 0.22],  // AI最高100km/h (83.3 * 0.33 ≈ 27.5 m/s)
   aiLookaheads: [3, 3, 2, 2, 2],
   cameraDistance: 8,
   cameraHeight: 3.5,
