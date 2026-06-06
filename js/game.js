@@ -362,7 +362,7 @@ export class Game {
     const startPositions = this.track.getStartPositions();
     // Remove old karts from scene
     for (const kart of this.karts) {
-      this.scene.remove(kart.renderer.mesh);
+      this.scene.remove(kart.renderer.group);
       this.physicsWorld.removeBody(kart.physics.chassisBody);
     }
     this.karts = [];

@@ -23,6 +23,8 @@ export class TrackBuilder {
     }
     this.meshes = [];
     this.spline = null;
+    this._frames = null;
+    this._frameCount = 0;
     this.waypoints = [];
     this.checkpoints = [];
   }
@@ -43,6 +45,11 @@ export class TrackBuilder {
 
     this.spline = new THREE.CatmullRomCurve3(pts, true, 'catmullrom', 0.5);
     this.trackLength = this.spline.getLength();
+
+    // Store Frenet frames for physics tilt computation
+    const segs = CONFIG.trackSegments;
+    this._frames = this.spline.computeFrenetFrames(segs, true);
+    this._frameCount = segs;
 
     this.buildRoad();
     this.buildCurbs();
