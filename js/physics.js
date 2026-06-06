@@ -40,7 +40,7 @@ export class KartPhysics {
       const speedRatio = this.speed / CONFIG.maxSpeed;
       const steerLimit = CONFIG.steerAngle * (1 - speedRatio * 0.3);
       const steerInput = steer * steerLimit;
-      const turnAmount = steerInput * 3.0 * Math.min(1, 8 / Math.max(this.speed, 8));
+      const turnAmount = steerInput * 2.5 * Math.min(1, this.speed / 5) * (1 + this.speed / 60);
       // Reverse steering when backing up
       this.heading += (isReversing ? -turnAmount : turnAmount) * dt;
     }
