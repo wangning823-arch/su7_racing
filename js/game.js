@@ -35,12 +35,15 @@ export class Game {
   }
 
   init() {
+    // Detect if likely desktop (large screen) to auto-adjust quality
+    const isDesktop = window.innerWidth > 1024 || window.innerHeight > 768;
+
     // Renderer
-    this.renderer = new THREE.WebGLRenderer({ antialias: true });
+    this.renderer = new THREE.WebGLRenderer({ antialias: !isDesktop });
     this.renderer.setSize(window.innerWidth, window.innerHeight);
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+    this.renderer.setPixelRatio(isDesktop ? 1 : Math.min(window.devicePixelRatio, 1.5));
     this.renderer.shadowMap.enabled = true;
-    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    this.renderer.shadowMap.type = isDesktop ? THREE.BasicShadowMap : THREE.PCFSoftShadowMap;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.2;
     document.body.appendChild(this.renderer.domElement);
@@ -60,7 +63,7 @@ export class Game {
     const sun = new THREE.DirectionalLight(0xffffff, 1.0);
     sun.position.set(50, 100, 50);
     sun.castShadow = true;
-    sun.shadow.mapSize.set(2048, 2048);
+    sun.shadow.mapSize.set(isDesktop ? 1024 : 2048, isDesktop ? 1024 : 2048);
     sun.shadow.camera.left = -80;
     sun.shadow.camera.right = 80;
     sun.shadow.camera.top = 80;
@@ -173,6 +176,7 @@ export class Game {
 
     // Handle input based on race state
     if (this.raceManager.state === 'RACING') {
+      this.hud.hideCountdown();
       // Cache input once per frame
       const rawInput = this.input.getInput();
       const playerInput = { ...rawInput, steer: -rawInput.steer };
@@ -240,11 +244,6 @@ export class Game {
 
     } else if (this.raceManager.state === 'COUNTDOWN') {
       this.hud.showCountdown(this.raceManager.countdownTime);
-
-      // Hide countdown when transition to RACING
-      if (this.raceManager.countdownTime <= 0) {
-        this.hud.hideCountdown();
-      }
 
       // Physics step (for stability)
       this.accumulator += dt;

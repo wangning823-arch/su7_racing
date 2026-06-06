@@ -30,7 +30,7 @@ export class KartRenderer {
     if (!preloadPromise) {
       preloadPromise = new Promise((resolve, reject) => {
         sharedLoader.load(
-          'models/su7_ultra/scene.gltf',
+          'models/su7_ultra_low/scene.gltf',
           (gltf) => {
             preloadedGltf = gltf;
             updateLoadingUI(1);
@@ -94,7 +94,7 @@ export class KartRenderer {
     if (preloadedGltf) {
       buildModel(preloadedGltf);
     } else {
-      sharedLoader.load('models/su7_ultra/scene.gltf', buildModel, undefined, (error) => {
+      sharedLoader.load('models/su7_ultra_low/scene.gltf', buildModel, undefined, (error) => {
         console.error('Error loading SU7 model:', error);
       });
     }
