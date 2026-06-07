@@ -36,6 +36,7 @@ export class TrackBuilder {
   }
 
   build(trackDef, theme = null) {
+    this.trackDef = trackDef;
     this.theme = theme || trackDef.theme || null;
 
     // Convert [x,y,z] arrays to Vector3
@@ -48,6 +49,16 @@ export class TrackBuilder {
 
     this.spline = new THREE.CatmullRomCurve3(pts, true, 'catmullrom', 0.5);
     this.trackLength = this.spline.getLength();
+
+    // Compute track bounds for dynamic ranges
+    let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
+    for (const p of pts) {
+      if (p.x < minX) minX = p.x;
+      if (p.x > maxX) maxX = p.x;
+      if (p.z < minZ) minZ = p.z;
+      if (p.z > maxZ) maxZ = p.z;
+    }
+    this.trackBounds = { minX, maxX, minZ, maxZ, width: maxX - minX, depth: maxZ - minZ };
 
     // Store Frenet frames for physics tilt computation
     const segs = CONFIG.trackSegments;
@@ -65,6 +76,7 @@ export class TrackBuilder {
     this.buildArrows();
     this.buildScenery();
     this.buildBuildings();
+    this.buildSpecialScenery();
   }
 
   buildRoad() {
@@ -203,7 +215,10 @@ export class TrackBuilder {
   }
 
   buildGround() {
-    const geo = new THREE.PlaneGeometry(500, 500);
+    const b = this.trackBounds;
+    const groundW = b ? Math.max(500, b.width + 300) : 500;
+    const groundD = b ? Math.max(500, b.depth + 300) : 500;
+    const geo = new THREE.PlaneGeometry(groundW, groundD);
     geo.rotateX(-Math.PI / 2);
 
     const g = this.theme?.ground || {};
@@ -236,6 +251,9 @@ export class TrackBuilder {
       case 'cactus': return new THREE.ConeGeometry(0.4, 4.0, 6);
       case 'dead': return new THREE.ConeGeometry(0.3, 2.0, 4);
       case 'cone': return new THREE.ConeGeometry(1.5, 3.5, 8);
+      case 'palm': return new THREE.ConeGeometry(2.0, 1.5, 6);
+      case 'pine': return new THREE.ConeGeometry(1.2, 5.0, 8);
+      case 'crystal': return new THREE.CylinderGeometry(0.3, 0.5, 4.0, 6);
       default: return new THREE.SphereGeometry(1.8, 8, 6);
     }
   }
@@ -261,11 +279,14 @@ export class TrackBuilder {
 
     const minDist = t.minDistToTrack ?? 18;
     let idx1 = 0, idx2 = 0;
+    const b = this.trackBounds;
+    const treeRangeX = b ? Math.max(400, b.width + 160) / 2 : 200;
+    const treeRangeZ = b ? Math.max(400, b.depth + 160) / 2 : 200;
     for (let i = 0; i < count; i++) {
       let x, z;
       do {
-        x = (Math.random() - 0.5) * 400;
-        z = (Math.random() - 0.5) * 400;
+        x = (Math.random() - 0.5) * treeRangeX * 2;
+        z = (Math.random() - 0.5) * treeRangeZ * 2;
       } while (this.distToTrack(x, z) < minDist);
       const y = this.getTerrainHeight(x, z);
       const scale = 0.7 + Math.random() * 0.8;
@@ -463,6 +484,264 @@ export class TrackBuilder {
     }
   }
 
+  buildSpecialScenery() {
+    if (!this.theme || !this.trackDef) return;
+
+    const id = this.trackDef.themeId;
+
+    if (id === 'coastal') this._buildLighthouse();
+    if (id === 'snow') this._buildIgloos();
+    if (id === 'farm') this._buildBarns();
+    if (id === 'nightmarket') this._buildNeonSigns();
+    if (id === 'nurburgring') {
+      this._buildBilsteinBridge();
+      this._buildSponsorBoards();
+    }
+  }
+
+  _buildLighthouse() {
+    const p = this.spline.getPointAt(0.15);
+    const t = this.spline.getTangentAt(0.15);
+    const right = new THREE.Vector3(t.z, 0, -t.x).normalize();
+    const pos = p.clone().add(right.clone().multiplyScalar(-30));
+
+    // Base cylinder
+    const baseGeo = new THREE.CylinderGeometry(1.5, 2, 12, 8);
+    const baseMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.5 });
+    const base = new THREE.Mesh(baseGeo, baseMat);
+    base.position.set(pos.x, pos.y + 4, pos.z);
+    base.castShadow = true;
+    this._add(base);
+
+    // Red stripe
+    const stripeGeo = new THREE.CylinderGeometry(1.6, 1.6, 2, 8);
+    const stripeMat = new THREE.MeshStandardMaterial({ color: 0xcc0000, roughness: 0.5 });
+    const stripe = new THREE.Mesh(stripeGeo, stripeMat);
+    stripe.position.set(pos.x, pos.y + 8, pos.z);
+    this._add(stripe);
+
+    // Top lantern room
+    const topGeo = new THREE.CylinderGeometry(1.8, 1.2, 2, 8);
+    const topMat = new THREE.MeshStandardMaterial({ color: 0x333333, roughness: 0.3, metalness: 0.6 });
+    const top = new THREE.Mesh(topGeo, topMat);
+    top.position.set(pos.x, pos.y + 14, pos.z);
+    this._add(top);
+
+    // Light
+    const lightGeo = new THREE.SphereGeometry(0.8, 8, 8);
+    const lightMat = new THREE.MeshStandardMaterial({ color: 0xffff00, emissive: 0xffff00, emissiveIntensity: 1.0 });
+    const light = new THREE.Mesh(lightGeo, lightMat);
+    light.position.set(pos.x, pos.y + 14, pos.z);
+    this._add(light);
+  }
+
+  _buildIgloos() {
+    const count = 6;
+    for (let i = 0; i < count; i++) {
+      const angle = (i / count) * Math.PI * 2;
+      const r = 80 + Math.random() * 30;
+      const x = Math.cos(angle) * r;
+      const z = Math.sin(angle) * r;
+      if (this.distToTrack(x, z) < 20) continue;
+
+      // Dome
+      const domeGeo = new THREE.SphereGeometry(3, 8, 6, 0, Math.PI * 2, 0, Math.PI / 2);
+      const domeMat = new THREE.MeshStandardMaterial({ color: 0xe8e8f0, roughness: 0.6 });
+      const dome = new THREE.Mesh(domeGeo, domeMat);
+      dome.position.set(x, -2, z);
+      dome.castShadow = true;
+      this._add(dome);
+
+      // Entrance tunnel
+      const tunnelGeo = new THREE.CylinderGeometry(1, 1.2, 3, 6);
+      const tunnel = new THREE.Mesh(tunnelGeo, domeMat);
+      tunnel.rotation.x = Math.PI / 2;
+      tunnel.position.set(x + 2.5, -1.5, z);
+      this._add(tunnel);
+    }
+  }
+
+  _buildBarns() {
+    const count = 4;
+    for (let i = 0; i < count; i++) {
+      const angle = (i / count) * Math.PI * 2 + 0.3;
+      const r = 60 + Math.random() * 20;
+      const x = Math.cos(angle) * r;
+      const z = Math.sin(angle) * r;
+      if (this.distToTrack(x, z) < 22) continue;
+
+      const w = 10 + Math.random() * 5;
+      const d = 14 + Math.random() * 5;
+      const h = 6 + Math.random() * 3;
+
+      // Main barn body
+      const bodyGeo = new THREE.BoxGeometry(w, h, d);
+      const bodyMat = new THREE.MeshStandardMaterial({ color: 0x8b2500, roughness: 0.8 });
+      const body = new THREE.Mesh(bodyGeo, bodyMat);
+      body.position.set(x, h / 2 - 2, z);
+      body.castShadow = true;
+      body.receiveShadow = true;
+      this._add(body);
+
+      // Roof (prism shape via two triangles)
+      const roofGeo = new THREE.ConeGeometry(Math.max(w, d) * 0.75, 4, 4);
+      const roofMat = new THREE.MeshStandardMaterial({ color: 0x5a3a1a, roughness: 0.9 });
+      const roof = new THREE.Mesh(roofGeo, roofMat);
+      roof.position.set(x, h + 0.5, z);
+      roof.rotation.y = Math.PI / 4;
+      roof.castShadow = true;
+      this._add(roof);
+    }
+  }
+
+  _buildNeonSigns() {
+    const neonColors = [0xff0066, 0x00ffaa, 0xffaa00, 0x00aaff, 0xff00ff, 0xffff00];
+    const count = 20;
+    for (let i = 0; i < count; i++) {
+      const t = Math.random();
+      const p = this.spline.getPointAt(t);
+      const tangent = this.spline.getTangentAt(t);
+      const right = new THREE.Vector3(tangent.z, 0, -tangent.x).normalize();
+      const side = Math.random() > 0.5 ? 1 : -1;
+      const dist = 8 + Math.random() * 5;
+      const x = p.x + right.x * dist * side;
+      const z = p.z + right.z * dist * side;
+
+      const color = neonColors[Math.floor(Math.random() * neonColors.length)];
+
+      // Neon sign post
+      const postGeo = new THREE.CylinderGeometry(0.08, 0.08, 4, 6);
+      const postMat = new THREE.MeshStandardMaterial({ color: 0x444444, metalness: 0.7 });
+      const post = new THREE.Mesh(postGeo, postMat);
+      post.position.set(x, 0, z);
+      this._add(post);
+
+      // Neon sign board
+      const signGeo = new THREE.BoxGeometry(3, 1.5, 0.15);
+      const signMat = new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 0.8, roughness: 0.3 });
+      const sign = new THREE.Mesh(signGeo, signMat);
+      sign.position.set(x, 3.5, z);
+      sign.rotation.y = Math.atan2(tangent.x, tangent.z);
+      this._add(sign);
+    }
+  }
+
+  _buildBilsteinBridge() {
+    // Place bridge at ~75% along track (Döttinger Höhe straight)
+    const t = 0.75;
+    const p = this.spline.getPointAt(t);
+    const tangent = this.spline.getTangentAt(t);
+    const right = new THREE.Vector3(tangent.z, 0, -tangent.x).normalize();
+    const angle = Math.atan2(tangent.x, tangent.z);
+
+    const bridgeWidth = (this._trackWidth || CONFIG.trackWidth) + 6;
+    const pillarH = 8;
+    const beamH = 1.2;
+
+    // Blue pillars on each side
+    const pillarGeo = new THREE.CylinderGeometry(0.3, 0.4, pillarH, 8);
+    const pillarMat = new THREE.MeshStandardMaterial({ color: 0x0055aa, roughness: 0.4, metalness: 0.5 });
+    for (let side of [-1, 1]) {
+      const pillar = new THREE.Mesh(pillarGeo, pillarMat);
+      const offset = right.clone().multiplyScalar(bridgeWidth / 2 * side);
+      pillar.position.set(p.x + offset.x, p.y + pillarH / 2, p.z + offset.z);
+      pillar.castShadow = true;
+      this._add(pillar);
+    }
+
+    // Yellow+blue横梁 (beam across the track)
+    const beamGeo = new THREE.BoxGeometry(bridgeWidth, beamH, 1.5);
+    const beamMat = new THREE.MeshStandardMaterial({ color: 0xddaa00, roughness: 0.3, metalness: 0.4 });
+    const beam = new THREE.Mesh(beamGeo, beamMat);
+    beam.position.set(p.x, p.y + pillarH + beamH / 2, p.z);
+    beam.rotation.y = angle;
+    beam.castShadow = true;
+    this._add(beam);
+
+    // Blue accent strip on beam
+    const stripGeo = new THREE.BoxGeometry(bridgeWidth + 0.2, 0.3, 1.6);
+    const stripMat = new THREE.MeshStandardMaterial({ color: 0x0055aa, roughness: 0.3, metalness: 0.5 });
+    const strip = new THREE.Mesh(stripGeo, stripMat);
+    strip.position.set(p.x, p.y + pillarH + beamH + 0.15, p.z);
+    strip.rotation.y = angle;
+    this._add(strip);
+
+    // BILSTEIN text on canvas
+    const canvas = document.createElement('canvas');
+    canvas.width = 256; canvas.height = 64;
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#003388';
+    ctx.fillRect(0, 0, 256, 64);
+    ctx.fillStyle = '#ffcc00';
+    ctx.font = 'bold 48px Arial';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('BILSTEIN', 128, 32);
+    const tex = new THREE.CanvasTexture(canvas);
+
+    const signGeo = new THREE.PlaneGeometry(8, 2);
+    const signMat = new THREE.MeshStandardMaterial({ map: tex, roughness: 0.3 });
+    const sign = new THREE.Mesh(signGeo, signMat);
+    sign.position.set(p.x, p.y + pillarH + beamH + 1.5, p.z);
+    sign.rotation.y = angle;
+    this._add(sign);
+  }
+
+  _buildSponsorBoards() {
+    const sponsors = [
+      { name: 'BILSTEIN', bg: '#003388', fg: '#ffcc00' },
+      { name: 'AUDI', bg: '#000000', fg: '#ffffff' },
+      { name: 'MERCEDES-AMG', bg: '#222222', fg: '#c0c0c0' },
+      { name: 'MICHELIN', bg: '#003399', fg: '#ffffff' },
+      { name: 'PIRELLI', bg: '#cc0000', fg: '#ffffff' },
+      { name: 'RECARO', bg: '#1a1a1a', fg: '#ff6600' },
+      { name: 'Sparco', bg: '#0066cc', fg: '#ffffff' },
+      { name: 'BRIDGESTONE', bg: '#cc0000', fg: '#ffffff' },
+    ];
+
+    const boardCount = 8;
+    for (let i = 0; i < boardCount; i++) {
+      const t = (i + 0.5) / boardCount;
+      const p = this.spline.getPointAt(t);
+      const tangent = this.spline.getTangentAt(t);
+      const right = new THREE.Vector3(tangent.z, 0, -tangent.x).normalize();
+      const side = i % 2 === 0 ? 1 : -1;
+      const dist = 12 + Math.random() * 4;
+      const x = p.x + right.x * dist * side;
+      const z = p.z + right.z * dist * side;
+
+      const sponsor = sponsors[i % sponsors.length];
+
+      // Post
+      const postGeo = new THREE.CylinderGeometry(0.08, 0.08, 3, 6);
+      const postMat = new THREE.MeshStandardMaterial({ color: 0x666666, metalness: 0.5 });
+      const post = new THREE.Mesh(postGeo, postMat);
+      post.position.set(x, 0, z);
+      this._add(post);
+
+      // Board canvas
+      const canvas = document.createElement('canvas');
+      canvas.width = 256; canvas.height = 128;
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = sponsor.bg;
+      ctx.fillRect(0, 0, 256, 128);
+      ctx.fillStyle = sponsor.fg;
+      ctx.font = 'bold 36px Arial';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(sponsor.name, 128, 64);
+      const tex = new THREE.CanvasTexture(canvas);
+
+      const boardGeo = new THREE.BoxGeometry(5, 2.5, 0.15);
+      const boardMat = new THREE.MeshStandardMaterial({ map: tex, roughness: 0.4 });
+      const board = new THREE.Mesh(boardGeo, boardMat);
+      board.position.set(x, 2.8, z);
+      board.rotation.y = Math.atan2(tangent.x, tangent.z);
+      board.castShadow = true;
+      this._add(board);
+    }
+  }
+
   buildBuildings() {
     const b = this.theme?.buildings;
     if (!b) return;
@@ -473,12 +752,15 @@ export class TrackBuilder {
 
     const buildingColors = [0x555566, 0x4a4a5a, 0x606070, 0x505060, 0x484858, 0x5a5a6a];
 
+    const b2 = this.trackBounds;
+    const buildRangeX = b2 ? Math.max(300, b2.width + 120) / 2 : 150;
+    const buildRangeZ = b2 ? Math.max(300, b2.depth + 120) / 2 : 150;
     for (let i = 0; i < count; i++) {
       let x, z;
       let attempts = 0;
       do {
-        x = (Math.random() - 0.5) * 300;
-        z = (Math.random() - 0.5) * 300;
+        x = (Math.random() - 0.5) * buildRangeX * 2;
+        z = (Math.random() - 0.5) * buildRangeZ * 2;
         attempts++;
       } while (this.distToTrack(x, z) < minDist && attempts < 50);
       if (attempts >= 50) continue;

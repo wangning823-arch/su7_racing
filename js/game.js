@@ -351,6 +351,13 @@ export class Game {
   applyTheme(theme) {
     this.scene.background = new THREE.Color(theme.sky.color);
     this.scene.fog = new THREE.Fog(theme.sky.color, theme.sky.fogNear, theme.sky.fogFar);
+
+    // Dynamic camera far plane for large tracks
+    if (this.camera) {
+      this.camera.far = Math.max(500, theme.sky.fogFar + 100);
+      this.camera.updateProjectionMatrix();
+    }
+
     if (this.ambientLight) {
       this.ambientLight.color.set(theme.lighting.ambientColor);
       this.ambientLight.intensity = theme.lighting.ambientIntensity;
@@ -358,6 +365,17 @@ export class Game {
     if (this.sun) {
       this.sun.color.set(theme.lighting.sunColor);
       this.sun.intensity = theme.lighting.sunIntensity;
+
+      // Dynamic shadow extent for large tracks
+      if (theme.shadow?.extent) {
+        const ext = theme.shadow.extent;
+        this.sun.shadow.camera.left = -ext;
+        this.sun.shadow.camera.right = ext;
+        this.sun.shadow.camera.top = ext;
+        this.sun.shadow.camera.bottom = -ext;
+        this.sun.shadow.camera.far = ext * 3;
+        this.sun.shadow.camera.updateProjectionMatrix();
+      }
     }
   }
 
